@@ -7,6 +7,7 @@ import {
   FileDiff,
   Play,
   Plus,
+  Square,
   Terminal,
   type LucideIcon,
 } from 'lucide-react';
@@ -15,58 +16,106 @@ import '@xterm/xterm/css/xterm.css';
 
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
-import {
-  actionUrl,
-  generateSessionId,
-  previewUrl,
-} from '@/modules/code/runtime';
+import { previewUrl } from '@/modules/code/runtime';
+import type { CodeSessionView } from '@/modules/code/service';
 import {
   useTerminalSession,
   type TerminalStatus,
 } from '@/modules/code/use-terminal-session';
+import { apiPost } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { m } from '@/paraglide/messages.js';
 import { Button, buttonVariants } from '@/components/ui/button';
 
+type CodeAction = 'health' | 'archive' | 'restore' | 'end';
+
+interface CodeActionResponse {
+  session?: CodeSessionView;
+  archive?: Record<string, unknown> | null;
+  restore?: Record<string, unknown>;
+  clear?: Record<string, unknown>;
+  archiveError?: string | null;
+  tmux?: string;
+  claude?: string;
+  ok?: boolean;
+  [key: string]: unknown;
+}
+
 function CodeWorkspacePage() {
   const loader = Route.useLoaderData();
-  const [sessionId, setSessionId] = useState(loader.sessionId);
+  const [sessions, setSessions] = useState<CodeSessionView[]>(loader.sessions);
+  const [sessionId, setSessionId] = useState<string | null>(
+    loader.session?.id ?? null
+  );
+  const [actionMsg, setActionMsg] = useState<string>('');
+  const [busyAction, setBusyAction] = useState<string>('');
+  const [previewNonce, setPreviewNonce] = useState(0);
   const terminalRef = useRef<HTMLDivElement | null>(null);
+
+  const currentSession =
+    sessions.find((session) => session.id === sessionId) ?? null;
+  const hasSession = Boolean(sessionId);
+  const controlsDisabled = !hasSession || Boolean(busyAction);
+
   const { status, reconnect } = useTerminalSession({
     runtimeBase: loader.runtimeBase,
-    userId: loader.userId,
+    userId: loader.runtimeUserId,
     sessionId,
     containerRef: terminalRef,
   });
 
-  const newSession = () => setSessionId(generateSessionId());
-
-  const [actionMsg, setActionMsg] = useState<string>('');
-  const [previewNonce, setPreviewNonce] = useState(0);
-
-  const runAction = async (
-    label: string,
-    url: string,
-    method: 'GET' | 'POST'
-  ) => {
+  const newSession = async () => {
+    setBusyAction('new');
     setActionMsg(m['code.actions.running']());
     try {
-      const res = await fetch(url, { method });
-      const payload = await res.json().catch(() => ({ ok: false }));
-      if (!res.ok || payload.ok === false) {
-        throw new Error(payload.error || res.statusText);
+      const idsToEnd = sessionId ? [sessionId] : sessions.map((s) => s.id);
+      for (const id of idsToEnd) {
+        await runSessionAction(id, 'end');
       }
-      if (label === 'health') {
-        setActionMsg(
-          [payload.tmux, payload.claude].filter(Boolean).join(' / ') || 'ok'
-        );
-      } else if (payload.digest) {
-        setActionMsg(`${label}: ${String(payload.digest).slice(0, 12)}…`);
-      } else {
-        setActionMsg(`${label}: ok`);
-      }
+
+      const session = await apiPost<CodeSessionView>('/api/code/sessions');
+      setSessions([session]);
+      setSessionId(session.id);
+      setPreviewNonce(Date.now());
+      setActionMsg(`${m['code.actions.started']()}: ${shortId(session.id)}`);
     } catch (err) {
       setActionMsg((err as Error).message || 'error');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const endCurrentSession = async () => {
+    if (!sessionId) return;
+    const endingId = sessionId;
+    setBusyAction('end');
+    setActionMsg(m['code.actions.running']());
+    try {
+      const payload = await runSessionAction(endingId, 'end');
+      setSessions((prev) => prev.filter((session) => session.id !== endingId));
+      setSessionId(null);
+      setActionMsg(formatActionMessage('end', payload));
+    } catch (err) {
+      setActionMsg((err as Error).message || 'error');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const runAction = async (action: CodeAction) => {
+    if (!sessionId) return;
+    setBusyAction(action);
+    setActionMsg(m['code.actions.running']());
+    try {
+      const payload = await runSessionAction(sessionId, action);
+      if (payload.session) {
+        setSessions((prev) => upsertSession(prev, payload.session!));
+      }
+      setActionMsg(formatActionMessage(action, payload));
+    } catch (err) {
+      setActionMsg((err as Error).message || 'error');
+    } finally {
+      setBusyAction('');
     }
   };
 
@@ -110,17 +159,40 @@ function CodeWorkspacePage() {
               size="icon"
               className="size-8 rounded-full"
               aria-label={m['code.sessions.new']()}
-              onClick={newSession}
+              disabled={Boolean(busyAction)}
+              onClick={() => void newSession()}
             >
               <Plus className="size-4" />
             </Button>
           </div>
 
           <div className="mt-6 space-y-2">
-            <div className="bg-muted flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm">
-              <span className="bg-primary size-2 rounded-full" />
-              <span className="truncate font-mono text-xs">{sessionId}</span>
-            </div>
+            {sessions.length === 0 && (
+              <p className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">
+                {m['code.sessions.empty']()}
+              </p>
+            )}
+            {sessions.map((session) => (
+              <button
+                key={session.id}
+                type="button"
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors',
+                  session.id === sessionId ? 'bg-muted' : 'hover:bg-muted/70'
+                )}
+                onClick={() => setSessionId(session.id)}
+              >
+                <span
+                  className={cn(
+                    'size-2 rounded-full',
+                    session.id === sessionId
+                      ? 'bg-primary'
+                      : 'bg-muted-foreground'
+                  )}
+                />
+                <span className="truncate font-mono text-xs">{session.id}</span>
+              </button>
+            ))}
           </div>
 
           <div className="border-border mt-6 rounded-lg border p-3">
@@ -135,9 +207,12 @@ function CodeWorkspacePage() {
               />
               <Metric
                 label={m['code.runtime.tmux']()}
-                value={m['code.runtime.attached']()}
+                value={statusLabel(status)}
               />
-              <Metric label={m['code.runtime.archive']()} value="R2" />
+              <Metric
+                label={m['code.runtime.archive']()}
+                value={currentSession?.archiveKey ? 'R2 saved' : 'R2'}
+              />
             </div>
           </div>
         </aside>
@@ -159,6 +234,7 @@ function CodeWorkspacePage() {
                   size="sm"
                   variant="outline"
                   className="h-7 rounded-full text-xs"
+                  disabled={!sessionId}
                   onClick={reconnect}
                 >
                   {m['code.terminal.reconnect']()}
@@ -167,6 +243,11 @@ function CodeWorkspacePage() {
             </div>
             <div className="relative min-h-[520px] bg-[#17130f] p-3">
               <div ref={terminalRef} className="h-[520px] w-full" />
+              {!sessionId && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#17130f] px-6 text-center text-sm text-[#f4eadf]/70">
+                  {m['code.sessions.empty']()}
+                </div>
+              )}
             </div>
           </div>
 
@@ -187,16 +268,27 @@ function CodeWorkspacePage() {
               subtitle={m['code.preview.subtitle']()}
             >
               <div className="border-border bg-background overflow-hidden rounded-md border">
-                <iframe
-                  title="preview"
-                  className="h-56 w-full"
-                  src={`${previewUrl(loader.runtimeBase, loader.userId, sessionId)}?t=${previewNonce}`}
-                />
+                {sessionId ? (
+                  <iframe
+                    title="preview"
+                    className="h-56 w-full"
+                    src={`${previewUrl(
+                      loader.runtimeBase,
+                      loader.runtimeUserId,
+                      sessionId
+                    )}?t=${previewNonce}`}
+                  />
+                ) : (
+                  <div className="text-muted-foreground flex h-56 items-center justify-center px-4 text-center text-xs">
+                    {m['code.preview.empty']()}
+                  </div>
+                )}
               </div>
               <Button
                 size="sm"
                 variant="outline"
                 className="mt-3 h-7 rounded-full text-xs"
+                disabled={!sessionId}
                 onClick={() => setPreviewNonce(Date.now())}
               >
                 {m['code.actions.refresh_preview']()}
@@ -213,17 +305,8 @@ function CodeWorkspacePage() {
                   size="sm"
                   variant="outline"
                   className="h-7 rounded-full text-xs"
-                  onClick={() =>
-                    runAction(
-                      'health',
-                      actionUrl(
-                        loader.runtimeBase,
-                        'container-health',
-                        loader.userId
-                      ),
-                      'GET'
-                    )
-                  }
+                  disabled={controlsDisabled}
+                  onClick={() => void runAction('health')}
                 >
                   {m['code.actions.health']()}
                 </Button>
@@ -231,18 +314,8 @@ function CodeWorkspacePage() {
                   size="sm"
                   variant="outline"
                   className="h-7 rounded-full text-xs"
-                  onClick={() =>
-                    runAction(
-                      'archive',
-                      actionUrl(
-                        loader.runtimeBase,
-                        'archive',
-                        loader.userId,
-                        sessionId
-                      ),
-                      'POST'
-                    )
-                  }
+                  disabled={controlsDisabled}
+                  onClick={() => void runAction('archive')}
                 >
                   {m['code.actions.archive']()}
                 </Button>
@@ -250,20 +323,20 @@ function CodeWorkspacePage() {
                   size="sm"
                   variant="outline"
                   className="h-7 rounded-full text-xs"
-                  onClick={() =>
-                    runAction(
-                      'restore',
-                      actionUrl(
-                        loader.runtimeBase,
-                        'restore',
-                        loader.userId,
-                        sessionId
-                      ),
-                      'POST'
-                    )
-                  }
+                  disabled={controlsDisabled}
+                  onClick={() => void runAction('restore')}
                 >
                   {m['code.actions.restore']()}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 rounded-full text-xs"
+                  disabled={controlsDisabled}
+                  onClick={() => void endCurrentSession()}
+                >
+                  <Square className="size-3" />
+                  {m['code.actions.end']()}
                 </Button>
               </div>
               <p className="text-muted-foreground mt-3 min-h-4 font-mono text-xs">
@@ -275,6 +348,55 @@ function CodeWorkspacePage() {
       </main>
     </div>
   );
+}
+
+async function runSessionAction(sessionId: string, action: CodeAction) {
+  return apiPost<CodeActionResponse>(
+    `/api/code/sessions/${encodeURIComponent(sessionId)}/actions`,
+    { action }
+  );
+}
+
+function upsertSession(sessions: CodeSessionView[], session: CodeSessionView) {
+  const rest = sessions.filter((item) => item.id !== session.id);
+  if (session.status !== 'active') return rest;
+  return [session, ...rest].slice(0, 10);
+}
+
+function shortId(sessionId: string) {
+  return sessionId.length > 18 ? `${sessionId.slice(0, 18)}...` : sessionId;
+}
+
+function formatActionMessage(action: CodeAction, payload: CodeActionResponse) {
+  if (action === 'health') {
+    return [payload.tmux, payload.claude].filter(Boolean).join(' / ') || 'ok';
+  }
+
+  if (action === 'end') {
+    return payload.archiveError
+      ? `${m['code.actions.ended']()}: ${payload.archiveError}`
+      : m['code.actions.ended']();
+  }
+
+  const detail =
+    action === 'archive'
+      ? payload.archive
+      : action === 'restore'
+        ? payload.restore
+        : payload;
+  const digest = digestFrom(detail) || digestFrom(payload);
+
+  if (digest) return `${action}: ${digest.slice(0, 12)}...`;
+  return `${action}: ok`;
+}
+
+function digestFrom(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return '';
+  const value =
+    (payload as Record<string, unknown>).workspaceDigest ||
+    (payload as Record<string, unknown>).archiveSha256 ||
+    (payload as Record<string, unknown>).digest;
+  return typeof value === 'string' ? value : '';
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -333,16 +455,20 @@ function Panel({
 const getCodeSession = createServerFn().handler(async () => {
   const { getRequest } = await import('@tanstack/react-start/server');
   const { getAuth } = await import('@/core/auth');
-  const { sanitizeUserId, generateSessionId } =
-    await import('@/modules/code/runtime');
+  const { getOrCreateActiveSession, listSessions } =
+    await import('@/modules/code/service');
 
   const request = getRequest();
   const session = await getAuth().api.getSession({ headers: request.headers });
   if (!session?.user) return null;
 
+  const activeSession = await getOrCreateActiveSession(session.user.id);
+  const sessions = await listSessions(session.user.id);
+
   return {
-    userId: sanitizeUserId(session.user.id),
-    sessionId: generateSessionId(),
+    runtimeUserId: activeSession.runtimeUserId,
+    session: activeSession,
+    sessions,
   };
 });
 

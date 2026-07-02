@@ -14,7 +14,7 @@ export type TerminalStatus =
 interface Options {
   runtimeBase: string;
   userId: string;
-  sessionId: string;
+  sessionId: string | null;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -49,6 +49,11 @@ export function useTerminalSession({
     if (socketRef.current) {
       socketRef.current.close();
       socketRef.current = null;
+    }
+    if (!sessionId) {
+      term.clear();
+      setStatus('idle');
+      return;
     }
     setStatus('connecting');
     const socket = new WebSocket(terminalWsUrl(runtimeBase, userId, sessionId));

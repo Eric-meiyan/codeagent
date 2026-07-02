@@ -860,6 +860,7 @@
   "code.sessions.title": "会话",
   "code.sessions.subtitle": "云工作区",
   "code.sessions.new": "新会话",
+  "code.sessions.empty": "暂无活跃会话",
   "code.runtime.title": "运行时",
   "code.runtime.sandbox": "沙箱",
   "code.runtime.tmux": "tmux",
@@ -876,6 +877,9 @@
   "code.actions.health": "健康检查",
   "code.actions.archive": "归档",
   "code.actions.restore": "恢复",
+  "code.actions.end": "结束",
+  "code.actions.ended": "会话已结束",
+  "code.actions.started": "会话已就绪",
   "code.actions.refresh_preview": "刷新预览",
   "code.actions.running": "执行中…",
   "code.diff.soon": "结构化 diff 将在后续版本支持。",
@@ -883,6 +887,7 @@
   "code.diff.subtitle": "代理编辑会在下一次预览或归档检查点前被跟踪。",
   "code.preview.title": "实时预览",
   "code.preview.subtitle": "会话级预览输出会显示在终端旁边。",
+  "code.preview.empty": "启动会话后可打开实时预览。",
   "code.archive.title": "归档",
   "code.archive.subtitle": "工作区文件可在运行时重启后持久化并恢复。"
 }

@@ -6,7 +6,7 @@ import {
   previewUrl,
   sanitizeUserId,
   terminalWsUrl,
-} from './runtime.ts';
+} from './runtime';
 
 // sanitizeUserId
 assert.equal(sanitizeUserId('User_123!@#'), 'user-123');

@@ -559,3 +559,31 @@ export type NewTicketMessage = typeof ticketMessage.$inferInsert;
 
 // ─── Custom tables ───────────────────────────────────────────────────────────
 // Add your own tables below this line.
+
+// ─── Code Sessions ───────────────────────────────────────────────────────────
+
+export const codeSession = table(
+  'code_session',
+  {
+    id: varchar191('id').primaryKey(),
+    userId: varchar191('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    runtimeUserId: varchar191('runtime_user_id').notNull(),
+    status: varchar('status', { length: 50 }).notNull().default('active'),
+    title: varchar('title', { length: 255 }).notNull().default(''),
+    archiveKey: text('archive_key'),
+    archiveDigest: varchar('archive_digest', { length: 128 }),
+    lastActiveAt: timestamp('last_active_at').defaultNow().notNull(),
+    endedAt: timestamp('ended_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    index('idx_code_session_user_status').on(t.userId, t.status),
+    index('idx_code_session_user_last_active').on(t.userId, t.lastActiveAt),
+  ]
+);
+
+export type CodeSession = typeof codeSession.$inferSelect;
+export type NewCodeSession = typeof codeSession.$inferInsert;

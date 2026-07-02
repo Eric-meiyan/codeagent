@@ -650,6 +650,38 @@ export type NewTicketMessage = typeof ticketMessage.$inferInsert;
 // ─── Custom tables ───────────────────────────────────────────────────────────
 // Add your own tables below this line.
 
+// ─── Code Sessions ───────────────────────────────────────────────────────────
+
+export const codeSession = table(
+  'code_session',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    runtimeUserId: text('runtime_user_id').notNull(),
+    status: text('status').notNull().default('active'),
+    title: text('title').notNull().default(''),
+    archiveKey: text('archive_key'),
+    archiveDigest: text('archive_digest'),
+    lastActiveAt: integer('last_active_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    endedAt: integer('ended_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index('idx_code_session_user_status').on(t.userId, t.status),
+    index('idx_code_session_user_last_active').on(t.userId, t.lastActiveAt),
+  ]
+);
+
 // ─── Invite Codes ────────────────────────────────────────────────────────────
 
 export const inviteCode = table(
@@ -691,6 +723,8 @@ export const userInvite = table(
   ]
 );
 
+export type CodeSession = typeof codeSession.$inferSelect;
+export type NewCodeSession = typeof codeSession.$inferInsert;
 export type InviteCode = typeof inviteCode.$inferSelect;
 export type NewInviteCode = typeof inviteCode.$inferInsert;
 export type UserInvite = typeof userInvite.$inferSelect;
