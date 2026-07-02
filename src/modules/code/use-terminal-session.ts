@@ -29,19 +29,49 @@ export function useTerminalSession({
   const fitRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const resizeTimersRef = useRef<number[]>([]);
 
-  const sendResize = useCallback(() => {
+  const sendResize = useCallback((redraw = false) => {
     const term = termRef.current;
     const fit = fitRef.current;
     const socket = socketRef.current;
     if (!term || !fit) return;
-    fit.fit();
+    try {
+      fit.fit();
+    } catch {
+      return;
+    }
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(
         JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })
       );
+      if (redraw) {
+        socket.send(JSON.stringify({ type: 'input', data: '\x0c' }));
+      }
     }
   }, []);
+
+  const queueResize = useCallback(
+    (delayMs: number, redraw = false) => {
+      const timer = window.setTimeout(() => {
+        resizeTimersRef.current = resizeTimersRef.current.filter(
+          (item) => item !== timer
+        );
+        window.requestAnimationFrame(() => sendResize(redraw));
+      }, delayMs);
+      resizeTimersRef.current.push(timer);
+    },
+    [sendResize]
+  );
+
+  const scheduleResizeBurst = useCallback(
+    (redraw = false) => {
+      [0, 80, 250, 600, 1200].forEach((delayMs, index) => {
+        queueResize(delayMs, redraw && index >= 2);
+      });
+    },
+    [queueResize]
+  );
 
   const connect = useCallback(() => {
     const term = termRef.current;
@@ -63,7 +93,7 @@ export function useTerminalSession({
     socket.addEventListener('open', () => {
       if (socketRef.current !== socket) return;
       setStatus('connected');
-      sendResize();
+      scheduleResizeBurst(true);
       // xterm only emits onData (keystrokes) while its helper textarea holds
       // focus; focus on connect so the user can type without clicking first.
       term.focus();
@@ -84,12 +114,13 @@ export function useTerminalSession({
       if (socketRef.current !== socket) return;
       setStatus('error');
     });
-  }, [runtimeBase, userId, sessionId, sendResize]);
+  }, [runtimeBase, userId, sessionId, scheduleResizeBurst]);
 
   const reconnect = useCallback(() => connect(), [connect]);
 
   useEffect(() => {
     let disposed = false;
+    let removeWindowResize: (() => void) | null = null;
     const container = containerRef.current;
     if (!container) return;
 
@@ -102,9 +133,12 @@ export function useTerminalSession({
 
       const term = new Terminal({
         cursorBlink: true,
-        convertEol: true,
+        convertEol: false,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-        fontSize: 13,
+        fontSize: 12,
+        letterSpacing: 0,
+        lineHeight: 1.15,
+        scrollback: 5000,
         theme: {
           background: '#17130f',
           foreground: '#f4eadf',
@@ -125,22 +159,33 @@ export function useTerminalSession({
 
       termRef.current = term;
       fitRef.current = fit;
+      scheduleResizeBurst();
+      document.fonts?.ready
+        .then(() => {
+          if (!disposed) scheduleResizeBurst(true);
+        })
+        .catch(() => undefined);
 
       // The terminal's real pixel size settles after hydration/layout and can
       // change without a window resize (side panels, font load, breakpoints).
       // Track the container directly so xterm's cols/rows stay in sync with the
       // dimensions we report to the PTY — otherwise Claude/tmux draw at the
       // wrong width/height and the TUI renders garbled. Fires once on observe.
-      const resizeObserver = new ResizeObserver(() => sendResize());
+      const resizeObserver = new ResizeObserver(() => scheduleResizeBurst());
       resizeObserver.observe(container);
       resizeObserverRef.current = resizeObserver;
-      window.addEventListener('resize', sendResize);
+      const onWindowResize = () => scheduleResizeBurst();
+      window.addEventListener('resize', onWindowResize);
+      removeWindowResize = () =>
+        window.removeEventListener('resize', onWindowResize);
       connect();
     })();
 
     return () => {
       disposed = true;
-      window.removeEventListener('resize', sendResize);
+      removeWindowResize?.();
+      resizeTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      resizeTimersRef.current = [];
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
       socketRef.current?.close();
@@ -150,7 +195,7 @@ export function useTerminalSession({
       fitRef.current = null;
     };
     // Re-init on session change so "new session" starts a fresh terminal.
-  }, [sessionId, connect, sendResize, containerRef]);
+  }, [sessionId, connect, scheduleResizeBurst, containerRef]);
 
   return { status, reconnect };
 }

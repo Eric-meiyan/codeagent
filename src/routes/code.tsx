@@ -144,7 +144,7 @@ function CodeWorkspacePage() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[260px_1fr]">
+      <main className="mx-auto grid max-w-[1600px] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="border-border bg-card rounded-lg border p-4 lg:min-h-[calc(100vh-6rem)]">
           <div className="flex items-center justify-between">
             <div>
@@ -217,8 +217,8 @@ function CodeWorkspacePage() {
           </div>
         </aside>
 
-        <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
-          <div className="border-border bg-card overflow-hidden rounded-lg border">
+        <section className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(800px,1fr)_320px]">
+          <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
             <div className="border-border bg-background/80 flex items-center justify-between border-b px-4 py-3">
               <div className="flex items-center gap-2">
                 <Terminal className="text-muted-foreground size-4" />
@@ -241,8 +241,8 @@ function CodeWorkspacePage() {
                 </Button>
               </div>
             </div>
-            <div className="relative min-h-[520px] bg-[#17130f] p-3">
-              <div ref={terminalRef} className="h-[520px] w-full" />
+            <div className="relative h-[620px] min-h-0 overflow-hidden bg-[#17130f] p-3">
+              <div ref={terminalRef} className="h-full min-h-0 w-full" />
               {!sessionId && (
                 <div className="absolute inset-0 flex items-center justify-center bg-[#17130f] px-6 text-center text-sm text-[#f4eadf]/70">
                   {m['code.sessions.empty']()}
