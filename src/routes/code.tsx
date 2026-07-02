@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createServerFn } from '@tanstack/react-start';
 import {
   Archive,
   CheckCircle2,
@@ -19,6 +20,10 @@ import { m } from '@/paraglide/messages.js';
 import { Button, buttonVariants } from '@/components/ui/button';
 
 function CodeWorkspacePage() {
+  const { userId, sessionId, runtimeBase } = Route.useLoaderData();
+  void userId;
+  void runtimeBase;
+
   const sessions = [
     m['code.sessions.current'](),
     m['code.sessions.preview'](),
@@ -59,6 +64,9 @@ function CodeWorkspacePage() {
               </p>
               <p className="text-muted-foreground mt-1 text-xs">
                 {m['code.sessions.subtitle']()}
+              </p>
+              <p className="text-muted-foreground mt-1 text-[11px]">
+                {sessionId}
               </p>
             </div>
             <Button
@@ -233,6 +241,32 @@ function Panel({
   );
 }
 
+const getCodeSession = createServerFn().handler(async () => {
+  const { getRequest } = await import('@tanstack/react-start/server');
+  const { getAuth } = await import('@/core/auth');
+  const { sanitizeUserId, generateSessionId } =
+    await import('@/modules/code/runtime');
+
+  const request = getRequest();
+  const session = await getAuth().api.getSession({ headers: request.headers });
+  if (!session?.user) return null;
+
+  return {
+    userId: sanitizeUserId(session.user.id),
+    sessionId: generateSessionId(),
+  };
+});
+
 export const Route = createFileRoute('/code')({
+  loader: async () => {
+    const session = await getCodeSession();
+    if (!session) {
+      throw redirect({ to: '/sign-in' });
+    }
+    return {
+      ...session,
+      runtimeBase: envConfigs.runtime_base_url,
+    };
+  },
   component: CodeWorkspacePage,
 });
