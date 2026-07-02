@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   actionUrl,
   generateSessionId,
+  normalizeAgent,
   previewUrl,
   sanitizeUserId,
   terminalWsUrl,
@@ -13,6 +14,11 @@ assert.equal(sanitizeUserId('User_123!@#'), 'user-123');
 assert.equal(sanitizeUserId('  --Ab--  '), 'ab');
 assert.equal(sanitizeUserId(''), 'user');
 assert.equal(sanitizeUserId('已经abc'), 'abc');
+
+// normalizeAgent
+assert.equal(normalizeAgent('codex'), 'codex');
+assert.equal(normalizeAgent('claude'), 'claude');
+assert.equal(normalizeAgent('unknown'), 'claude');
 
 // generateSessionId
 const a = generateSessionId();
@@ -29,6 +35,10 @@ assert.equal(
   terminalWsUrl('http://localhost:8787', 'u1', 's1'),
   'ws://localhost:8787/terminal/u1/s1'
 );
+assert.equal(
+  terminalWsUrl('https://rt.example.dev', 'u1', 's1', 'codex'),
+  'wss://rt.example.dev/terminal/u1/s1?agent=codex'
+);
 
 // actionUrl
 assert.equal(
@@ -38,6 +48,10 @@ assert.equal(
 assert.equal(
   actionUrl('https://rt.example.dev', 'archive', 'u1', 's1'),
   'https://rt.example.dev/archive/u1/s1'
+);
+assert.equal(
+  actionUrl('https://rt.example.dev', 'clear', 'u1', 's1', 'codex'),
+  'https://rt.example.dev/clear/u1/s1?agent=codex'
 );
 
 // previewUrl

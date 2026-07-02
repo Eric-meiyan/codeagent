@@ -660,6 +660,7 @@ export const codeSession = table(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     runtimeUserId: text('runtime_user_id').notNull(),
+    agent: text('agent').notNull().default('claude'),
     status: text('status').notNull().default('active'),
     title: text('title').notNull().default(''),
     archiveKey: text('archive_key'),

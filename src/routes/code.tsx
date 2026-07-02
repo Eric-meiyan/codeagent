@@ -3,6 +3,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import {
   Archive,
+  Bot,
   Cloud,
   FileDiff,
   Play,
@@ -16,7 +17,12 @@ import '@xterm/xterm/css/xterm.css';
 
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
-import { previewUrl } from '@/modules/code/runtime';
+import {
+  CODE_SESSION_AGENTS,
+  normalizeAgent,
+  previewUrl,
+  type CodeSessionAgent,
+} from '@/modules/code/runtime';
 import type { CodeSessionView } from '@/modules/code/service';
 import {
   useTerminalSession,
@@ -26,6 +32,14 @@ import { apiPost } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { m } from '@/paraglide/messages.js';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type CodeAction = 'health' | 'archive' | 'restore' | 'end';
 
@@ -37,6 +51,8 @@ interface CodeActionResponse {
   archiveError?: string | null;
   tmux?: string;
   claude?: string;
+  codex?: string;
+  codexConfigured?: boolean;
   ok?: boolean;
   [key: string]: unknown;
 }
@@ -47,6 +63,9 @@ function CodeWorkspacePage() {
   const [sessionId, setSessionId] = useState<string | null>(
     loader.session?.id ?? null
   );
+  const [selectedAgent, setSelectedAgent] = useState<CodeSessionAgent>(
+    loader.session?.agent ?? 'claude'
+  );
   const [actionMsg, setActionMsg] = useState<string>('');
   const [busyAction, setBusyAction] = useState<string>('');
   const [previewNonce, setPreviewNonce] = useState(0);
@@ -54,6 +73,7 @@ function CodeWorkspacePage() {
 
   const currentSession =
     sessions.find((session) => session.id === sessionId) ?? null;
+  const currentAgent = currentSession?.agent ?? selectedAgent;
   const hasSession = Boolean(sessionId);
   const controlsDisabled = !hasSession || Boolean(busyAction);
 
@@ -61,6 +81,7 @@ function CodeWorkspacePage() {
     runtimeBase: loader.runtimeBase,
     userId: loader.runtimeUserId,
     sessionId,
+    agent: currentSession?.agent ?? selectedAgent,
     containerRef: terminalRef,
   });
 
@@ -73,9 +94,12 @@ function CodeWorkspacePage() {
         await runSessionAction(id, 'end');
       }
 
-      const session = await apiPost<CodeSessionView>('/api/code/sessions');
+      const session = await apiPost<CodeSessionView>('/api/code/sessions', {
+        agent: selectedAgent,
+      });
       setSessions([session]);
       setSessionId(session.id);
+      setSelectedAgent(session.agent);
       setPreviewNonce(Date.now());
       setActionMsg(`${m['code.actions.started']()}: ${shortId(session.id)}`);
     } catch (err) {
@@ -166,6 +190,28 @@ function CodeWorkspacePage() {
             </Button>
           </div>
 
+          <div className="mt-5 space-y-2">
+            <Label className="text-muted-foreground text-xs">
+              {m['code.agent.new_session']()}
+            </Label>
+            <Select
+              value={selectedAgent}
+              onValueChange={(value) => setSelectedAgent(normalizeAgent(value))}
+              disabled={Boolean(busyAction)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {CODE_SESSION_AGENTS.map((agent) => (
+                  <SelectItem key={agent} value={agent}>
+                    {agentLabel(agent)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="mt-6 space-y-2">
             {sessions.length === 0 && (
               <p className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">
@@ -180,7 +226,10 @@ function CodeWorkspacePage() {
                   'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors',
                   session.id === sessionId ? 'bg-muted' : 'hover:bg-muted/70'
                 )}
-                onClick={() => setSessionId(session.id)}
+                onClick={() => {
+                  setSessionId(session.id);
+                  setSelectedAgent(session.agent);
+                }}
               >
                 <span
                   className={cn(
@@ -190,7 +239,15 @@ function CodeWorkspacePage() {
                       : 'bg-muted-foreground'
                   )}
                 />
-                <span className="truncate font-mono text-xs">{session.id}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-xs">
+                    {session.id}
+                  </span>
+                  <span className="text-muted-foreground mt-0.5 flex items-center gap-1 text-[11px]">
+                    <Bot className="size-3" />
+                    {agentLabel(session.agent)}
+                  </span>
+                </span>
               </button>
             ))}
           </div>
@@ -204,6 +261,10 @@ function CodeWorkspacePage() {
               <Metric
                 label={m['code.runtime.sandbox']()}
                 value={m['code.runtime.ready']()}
+              />
+              <Metric
+                label={m['code.agent.current']()}
+                value={agentLabel(currentAgent)}
               />
               <Metric
                 label={m['code.runtime.tmux']()}
@@ -369,7 +430,11 @@ function shortId(sessionId: string) {
 
 function formatActionMessage(action: CodeAction, payload: CodeActionResponse) {
   if (action === 'health') {
-    return [payload.tmux, payload.claude].filter(Boolean).join(' / ') || 'ok';
+    return (
+      [payload.tmux, payload.claude, payload.codex]
+        .filter(Boolean)
+        .join(' / ') || 'ok'
+    );
   }
 
   if (action === 'end') {
@@ -406,6 +471,16 @@ function Metric({ label, value }: { label: string; value: string }) {
       <span className="font-medium">{value}</span>
     </div>
   );
+}
+
+function agentLabel(agent: CodeSessionAgent) {
+  switch (agent) {
+    case 'codex':
+      return m['code.agent.codex']();
+    case 'claude':
+    default:
+      return m['code.agent.claude']();
+  }
 }
 
 function statusLabel(status: TerminalStatus): string {

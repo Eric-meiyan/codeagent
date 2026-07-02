@@ -8,12 +8,20 @@ import {
   type NewCodeSession,
 } from '@/config/db/schema';
 
-import { actionUrl, generateSessionId, sanitizeUserId } from './runtime';
+import {
+  actionUrl,
+  generateSessionId,
+  normalizeAgent,
+  sanitizeUserId,
+  type CodeSessionAgent,
+} from './runtime';
 
 export type CodeSessionStatus = 'active' | 'ended' | 'error';
+export type { CodeSessionAgent };
 
 export interface CodeSessionView {
   id: string;
+  agent: CodeSessionAgent;
   runtimeUserId: string;
   status: CodeSessionStatus;
   title: string;
@@ -46,6 +54,7 @@ function asIso(value: Date | string | number | null | undefined) {
 export function toView(row: CodeSession): CodeSessionView {
   return {
     id: row.id,
+    agent: normalizeAgent(row.agent),
     runtimeUserId: row.runtimeUserId,
     status: row.status as CodeSessionStatus,
     title: row.title,
@@ -88,7 +97,10 @@ export async function getOrCreateActiveSession(
   return createSession(userId);
 }
 
-export async function createSession(userId: string): Promise<CodeSessionView> {
+export async function createSession(
+  userId: string,
+  agent?: unknown
+): Promise<CodeSessionView> {
   const activeRows = await db()
     .select({ id: codeSession.id })
     .from(codeSession)
@@ -103,8 +115,10 @@ export async function createSession(userId: string): Promise<CodeSessionView> {
 
   const now = new Date();
   const runtimeUserId = sanitizeUserId(userId);
+  const normalizedAgent = normalizeAgent(agent);
   const row: NewCodeSession = {
     id: generateSessionId(),
+    agent: normalizedAgent,
     userId,
     runtimeUserId,
     status: 'active',
@@ -205,10 +219,17 @@ async function runtimeJson(
   action: string,
   runtimeUserId: string,
   sessionId?: string,
-  method: 'GET' | 'POST' = 'GET'
+  method: 'GET' | 'POST' = 'GET',
+  agent?: CodeSessionAgent
 ): Promise<RuntimeActionResult> {
   const res = await fetch(
-    actionUrl(envConfigs.runtime_base_url, action, runtimeUserId, sessionId),
+    actionUrl(
+      envConfigs.runtime_base_url,
+      action,
+      runtimeUserId,
+      sessionId,
+      agent
+    ),
     { method }
   );
   const payload = await res.json().catch(() => ({}));
@@ -224,8 +245,16 @@ async function runtimeJson(
   return payload;
 }
 
-export async function health(userId: string) {
-  return runtimeJson('container-health', sanitizeUserId(userId));
+export async function health(userId: string, sessionId: string) {
+  const row = await getOwnedSession(userId, sessionId);
+  if (!row) throw new Error('Session not found');
+  return runtimeJson(
+    'container-health',
+    row.runtimeUserId,
+    sessionId,
+    'GET',
+    normalizeAgent(row.agent)
+  );
 }
 
 export async function archiveSession(userId: string, sessionId: string) {
@@ -237,7 +266,8 @@ export async function archiveSession(userId: string, sessionId: string) {
     'archive',
     row.runtimeUserId,
     sessionId,
-    'GET'
+    'GET',
+    normalizeAgent(row.agent)
   );
   const session = await recordArchive(userId, sessionId, archive);
 
@@ -253,7 +283,8 @@ export async function restoreSession(userId: string, sessionId: string) {
     'restore',
     row.runtimeUserId,
     sessionId,
-    'POST'
+    'POST',
+    normalizeAgent(row.agent)
   );
   const session = await touchSession(userId, sessionId);
 
@@ -272,7 +303,8 @@ export async function endSession(userId: string, sessionId: string) {
         'archive',
         row.runtimeUserId,
         sessionId,
-        'GET'
+        'GET',
+        normalizeAgent(row.agent)
       );
     } catch (error) {
       archiveError = (error as Error).message || 'Archive failed';
@@ -284,7 +316,8 @@ export async function endSession(userId: string, sessionId: string) {
       'clear',
       row.runtimeUserId,
       sessionId,
-      'POST'
+      'POST',
+      normalizeAgent(row.agent)
     );
     const session = await markSessionEnded(userId, sessionId, archive);
     return { session, archive, clear, archiveError };

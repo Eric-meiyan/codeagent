@@ -570,6 +570,7 @@ export const codeSession = table(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     runtimeUserId: varchar191('runtime_user_id').notNull(),
+    agent: varchar('agent', { length: 32 }).notNull().default('claude'),
     status: varchar('status', { length: 50 }).notNull().default('active'),
     title: varchar('title', { length: 255 }).notNull().default(''),
     archiveKey: text('archive_key'),

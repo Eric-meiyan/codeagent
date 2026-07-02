@@ -40,7 +40,7 @@ async function POST({
 
     switch (body.action) {
       case 'health':
-        return respData(await codeSessions.health(user.id));
+        return respData(await codeSessions.health(user.id, params.id));
       case 'archive':
         return respData(await codeSessions.archiveSession(user.id, params.id));
       case 'restore':

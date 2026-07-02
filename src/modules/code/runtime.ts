@@ -1,6 +1,13 @@
 // Pure helpers for the CodeAgent runtime session. No DOM / browser deps —
 // safe to run under tsx and to import from server functions.
 
+export const CODE_SESSION_AGENTS = ['claude', 'codex'] as const;
+export type CodeSessionAgent = (typeof CODE_SESSION_AGENTS)[number];
+
+export function normalizeAgent(value: unknown): CodeSessionAgent {
+  return value === 'codex' ? 'codex' : 'claude';
+}
+
 // Lossy by design: lowercases and strips everything outside [a-z0-9-], so
 // two distinct auth user ids could in theory collapse to the same slug and
 // share a runtime container namespace. Acceptable for round 1 (random
@@ -28,20 +35,33 @@ function trimSlashes(base: string): string {
   return base.replace(/\/+$/, '');
 }
 
+function appendAgentParam(url: string, agent?: CodeSessionAgent): string {
+  const normalized = normalizeAgent(agent);
+  if (normalized === 'claude') return url;
+  const parsed = new URL(url);
+  parsed.searchParams.set('agent', normalized);
+  return parsed.toString();
+}
+
 export function terminalWsUrl(
   base: string,
   userId: string,
-  sessionId: string
+  sessionId: string,
+  agent?: CodeSessionAgent
 ): string {
   const wsBase = trimSlashes(base).replace(/^http/, 'ws');
-  return `${wsBase}/terminal/${encodeURIComponent(userId)}/${encodeURIComponent(sessionId)}`;
+  return appendAgentParam(
+    `${wsBase}/terminal/${encodeURIComponent(userId)}/${encodeURIComponent(sessionId)}`,
+    agent
+  );
 }
 
 export function actionUrl(
   base: string,
   action: string,
   userId: string,
-  sessionId?: string
+  sessionId?: string,
+  agent?: CodeSessionAgent
 ): string {
   const parts = [
     trimSlashes(base),
@@ -49,7 +69,7 @@ export function actionUrl(
     encodeURIComponent(userId),
   ];
   if (sessionId) parts.push(encodeURIComponent(sessionId));
-  return parts.join('/');
+  return appendAgentParam(parts.join('/'), agent);
 }
 
 export function previewUrl(

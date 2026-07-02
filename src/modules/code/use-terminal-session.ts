@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
-import { terminalWsUrl } from './runtime';
+import { terminalWsUrl, type CodeSessionAgent } from './runtime';
 
 export type TerminalStatus =
   | 'idle'
@@ -15,6 +15,7 @@ interface Options {
   runtimeBase: string;
   userId: string;
   sessionId: string | null;
+  agent?: CodeSessionAgent;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -22,6 +23,7 @@ export function useTerminalSession({
   runtimeBase,
   userId,
   sessionId,
+  agent,
   containerRef,
 }: Options): { status: TerminalStatus; reconnect: () => void } {
   const [status, setStatus] = useState<TerminalStatus>('idle');
@@ -86,7 +88,9 @@ export function useTerminalSession({
       return;
     }
     setStatus('connecting');
-    const socket = new WebSocket(terminalWsUrl(runtimeBase, userId, sessionId));
+    const socket = new WebSocket(
+      terminalWsUrl(runtimeBase, userId, sessionId, agent)
+    );
     socket.binaryType = 'arraybuffer';
     socketRef.current = socket;
 
@@ -114,7 +118,7 @@ export function useTerminalSession({
       if (socketRef.current !== socket) return;
       setStatus('error');
     });
-  }, [runtimeBase, userId, sessionId, scheduleResizeBurst]);
+  }, [runtimeBase, userId, sessionId, agent, scheduleResizeBurst]);
 
   const reconnect = useCallback(() => connect(), [connect]);
 
@@ -195,7 +199,7 @@ export function useTerminalSession({
       fitRef.current = null;
     };
     // Re-init on session change so "new session" starts a fresh terminal.
-  }, [sessionId, connect, scheduleResizeBurst, containerRef]);
+  }, [sessionId, agent, connect, scheduleResizeBurst, containerRef]);
 
   return { status, reconnect };
 }
