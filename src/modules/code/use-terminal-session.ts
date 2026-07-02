@@ -58,6 +58,9 @@ export function useTerminalSession({
       if (socketRef.current !== socket) return;
       setStatus('connected');
       sendResize();
+      // xterm only emits onData (keystrokes) while its helper textarea holds
+      // focus; focus on connect so the user can type without clicking first.
+      term.focus();
     });
     socket.addEventListener('message', (event) => {
       if (socketRef.current !== socket) return;
@@ -106,6 +109,7 @@ export function useTerminalSession({
       term.loadAddon(fit);
       term.open(container);
       fit.fit();
+      term.focus();
       term.onData((data) => {
         const socket = socketRef.current;
         if (socket && socket.readyState === WebSocket.OPEN) {
