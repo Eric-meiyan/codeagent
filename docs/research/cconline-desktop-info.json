@@ -1,0 +1,217 @@
+{
+  "title": "Claude Code Online | Claude Code Web Workspace | CCOnline",
+  "url": "https://cconline.sh/",
+  "bodyClass": "font-sans antialiased",
+  "htmlClass": "light",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "height": 4792,
+  "textSample": "CCOnline\nFeatures\nPricing\nSwitch language\nToggle theme\nGet Started\nClaude Code in your browser.\n\nCCOnline is a Claude Code web workspace for building, fixing, and shipping code from a cloud sandbox — no install, no setup.\n\nStart Claude Code online\nPricing\nClaude Code web, with the full development loop\n\nRun the Claude Code CLI, a Linux sandbox, terminals, file editing, previews, and persisted sessions from one browser workspace.\n\nReal Claude Code online\n\nNot a chat clone — the actual Claude Code CLI runs in a live terminal, reads files, executes commands, edits code, and recovers from errors.\n\nCloud sandbox for every session\n\nEach Claude Code web session gets an isolated Linux sandbox with Node, git, package managers, and a real shell in seconds.\n\nBuild, test, and iterate\n\nGive the agent a goal and it works across your project: multi-file edits, dependency installs, test runs, previews, and fixes.\n\nResume your coding sessions\n\nWorkspace files and Claude Code session history can persist, so you can close the tab and continue later from the same project state.\n\nClaude Code from any browser\n\nUse Claude Code online on a laptop, tablet, or borrowed machine. No SSH keys, Docker setup, or local toolchain required.\n\nCredits for sandbox and models\n\nUse one clear credit balance for sandbox runtime and platform model usage, with BYOK available when you want to use your own model key.\n\nPricing\n\nPlans grant monthly credits. Top-up credits remain usable while valid, even if a subscription ends.\n\nStarter\n\n$9\n/mo\n\nFor light coding sessions\n\nGet Started\n10,000 credits / month\nBYOK supported with your own model API key\nCCOnline default platform model included\nCredits cover sandbox runtime\nCloud sandbox workspace included\nPopular\n\nStandard\n\n$19\n/mo\n\nStandard monthly usage\n\nGet Started\n25,000 credits / month\nBYOK supported with your own model API key\nIncludes the CCOnline default platform model\nMonthly credits for sandbox runtime and platform model usage\nCloud sandbox workspace included\nWorkspace files and chat history persist\n\nPro\n\n$39\n/mo\n\nExtended usage for serious builders\n\nGet Started\n60,000 credits / month\nBYOK supported with your own model API key\nIncludes the CCOnline default platform model\nMonthly credits for sandbox runtime and platform model usage\nWorkspace files and chat history persist\nMore room for long-running coding sessions\nHighest limits\nDedicated support\nFrequently asked questions\n\nEverything you need to know before getting started.\n\nIs CCOnline real Claude Code online?\nWhere does a Claude Code web session run?\nDo I need to install Claude Code locally?\nHow is it billed?\nIs my code private?\nOpen Claude Code online in seconds.\n\nDescribe what you want to build and let Claude Code work inside a live cloud sandbox, directly from your browser.\n\nOpen Claude Code web\n\nClaude Code online, in your browser.\n\nFeature\n\nPricing\nCode\n\nLegal\n\nPrivacy Policy\nTerms of Service\nEnglish\nBuilt with\n❤️\nShipAny\n© 2026 CCOnline. All rights reserved.\n\n切换到中文？\n\n切换",
+  "links": [
+    {
+      "text": "CCOnline",
+      "href": "https://cconline.sh/",
+      "className": "flex items-center active"
+    },
+    {
+      "text": "Features",
+      "href": "https://cconline.sh/#features",
+      "className": "text-sm text-muted-foreground transition-colors hover:text-foreground"
+    },
+    {
+      "text": "Pricing",
+      "href": "https://cconline.sh/pricing",
+      "className": "text-sm text-muted-foreground transition-colors hover:text-foreground"
+    },
+    {
+      "text": "Get Started",
+      "href": "https://cconline.sh/code?new=1",
+      "className": "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground [a]:hover:bg-primary/80 h-8 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 gap-1.5"
+    },
+    {
+      "text": "Open Claude Code web",
+      "href": "https://cconline.sh/code?new=1",
+      "className": "group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground [a]:hover:bg-primary/80 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 gap-2 rounded-full px-8 h-12"
+    },
+    {
+      "text": "Pricing",
+      "href": "https://cconline.sh/pricing",
+      "className": "text-sm text-neutral-400 transition-colors hover:text-neutral-100"
+    },
+    {
+      "text": "Code",
+      "href": "https://cconline.sh/code",
+      "className": "text-sm text-neutral-400 transition-colors hover:text-neutral-100"
+    },
+    {
+      "text": "Privacy Policy",
+      "href": "https://cconline.sh/privacy-policy",
+      "className": "text-sm text-neutral-400 transition-colors hover:text-neutral-100"
+    },
+    {
+      "text": "Terms of Service",
+      "href": "https://cconline.sh/terms-of-service",
+      "className": "text-sm text-neutral-400 transition-colors hover:text-neutral-100"
+    },
+    {
+      "text": "",
+      "href": "https://cconline.sh/settings/tickets",
+      "className": "text-neutral-300 transition-colors hover:text-neutral-100"
+    },
+    {
+      "text": "Built with\n❤️\nShipAny",
+      "href": "https://shipany.ai/?utm_source=cconline.sh",
+      "className": "inline-flex items-center gap-2 rounded-full border border-neutral-700 bg-neutral-900 px-3.5 py-1.5 text-sm font-medium text-neutral-100 transition-colors hover:border-neutral-500 hover:bg-neutral-800"
+    }
+  ],
+  "buttons": [
+    {
+      "text": "Switch language",
+      "className": "inline-flex items-center transition-colors outline-none justify-center rounded-md size-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+      "aria": null
+    },
+    {
+      "text": "Toggle theme",
+      "className": "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 size-8",
+      "aria": null
+    },
+    {
+      "text": "",
+      "className": "md:hidden p-2",
+      "aria": "Open menu"
+    },
+    {
+      "text": "Start Claude Code online",
+      "className": "inline-flex h-13 w-full items-center justify-center gap-2 rounded-full bg-primary px-8 text-base font-semibold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md sm:w-auto",
+      "aria": null
+    },
+    {
+      "text": "Pricing",
+      "className": "inline-flex h-13 w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-8 text-base font-semibold text-foreground transition-colors hover:border-foreground/30 hover:bg-muted sm:w-auto",
+      "aria": null
+    },
+    {
+      "text": "Get Started",
+      "className": "group/button inline-flex shrink-0 items-center justify-center border bg-clip-padding whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 h-10 w-full rounded-full text-sm font-semibold bg-background",
+      "aria": null
+    },
+    {
+      "text": "Get Started",
+      "className": "group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground [a]:hover:bg-primary/80 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 h-10 w-full rounded-full text-sm font-semibold",
+      "aria": null
+    },
+    {
+      "text": "Get Started",
+      "className": "group/button inline-flex shrink-0 items-center justify-center border bg-clip-padding whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 h-10 w-full rounded-full text-sm font-semibold bg-background",
+      "aria": null
+    },
+    {
+      "text": "Is CCOnline real Claude Code online?",
+      "className": "group/accordion-trigger relative flex flex-1 items-start justify-between rounded-lg border border-transparent transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:after:border-ring aria-disabled:pointer-events-none aria-disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4 **:data-[slot=accordion-trigger-icon]:text-muted-foreground cursor-pointer py-6 text-left text-base font-medium hover:no-underline",
+      "aria": null
+    },
+    {
+      "text": "Where does a Claude Code web session run?",
+      "className": "group/accordion-trigger relative flex flex-1 items-start justify-between rounded-lg border border-transparent transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:after:border-ring aria-disabled:pointer-events-none aria-disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4 **:data-[slot=accordion-trigger-icon]:text-muted-foreground cursor-pointer py-6 text-left text-base font-medium hover:no-underline",
+      "aria": null
+    },
+    {
+      "text": "Do I need to install Claude Code locally?",
+      "className": "group/accordion-trigger relative flex flex-1 items-start justify-between rounded-lg border border-transparent transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:after:border-ring aria-disabled:pointer-events-none aria-disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4 **:data-[slot=accordion-trigger-icon]:text-muted-foreground cursor-pointer py-6 text-left text-base font-medium hover:no-underline",
+      "aria": null
+    },
+    {
+      "text": "How is it billed?",
+      "className": "group/accordion-trigger relative flex flex-1 items-start justify-between rounded-lg border border-transparent transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:after:border-ring aria-disabled:pointer-events-none aria-disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4 **:data-[slot=accordion-trigger-icon]:text-muted-foreground cursor-pointer py-6 text-left text-base font-medium hover:no-underline",
+      "aria": null
+    },
+    {
+      "text": "Is my code private?",
+      "className": "group/accordion-trigger relative flex flex-1 items-start justify-between rounded-lg border border-transparent transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:after:border-ring aria-disabled:pointer-events-none aria-disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4 **:data-[slot=accordion-trigger-icon]:text-muted-foreground cursor-pointer py-6 text-left text-base font-medium hover:no-underline",
+      "aria": null
+    },
+    {
+      "text": "English",
+      "className": "inline-flex items-center transition-colors outline-none gap-2 rounded-full border px-4 h-9 text-sm border-neutral-700 text-neutral-200 hover:bg-white/5 hover:text-neutral-50",
+      "aria": null
+    },
+    {
+      "text": "",
+      "className": "fixed bottom-6 right-6 z-50 size-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 hover:shadow-xl transition-all",
+      "aria": "Contact support"
+    },
+    {
+      "text": "切换",
+      "className": "group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 bg-primary text-primary-foreground [a]:hover:bg-primary/80 h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+      "aria": null
+    },
+    {
+      "text": "",
+      "className": "group/button inline-flex items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 size-8 shrink-0",
+      "aria": "关闭"
+    }
+  ],
+  "images": [
+    {
+      "src": "https://cconline.sh/logo.svg",
+      "alt": "",
+      "width": 512,
+      "height": 512,
+      "className": "size-7 shrink-0 rounded-[7px]"
+    },
+    {
+      "src": "https://cconline.sh/imgs/landing/cconline-preview.png",
+      "alt": "CCOnline workspace preview",
+      "width": 2866,
+      "height": 1458,
+      "className": "block w-full rounded-[1.1rem] border border-border/70 object-cover sm:rounded-[1.5rem]"
+    }
+  ],
+  "videos": [],
+  "svgs": 46,
+  "fonts": [
+    "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+    "\"Libre Baskerville\", serif, ui-serif, Georgia, Cambria, \"Times New Roman\", \"Noto Serif SC\", \"Source Han Serif SC\", \"Songti SC\", SimSun, Times, serif"
+  ],
+  "favicons": [
+    {
+      "rel": "icon",
+      "href": "https://cconline.sh/favicon.svg",
+      "sizes": ""
+    },
+    {
+      "rel": "icon",
+      "href": "https://cconline.sh/favicon.png",
+      "sizes": ""
+    },
+    {
+      "rel": "shortcut icon",
+      "href": "https://cconline.sh/favicon.ico",
+      "sizes": ""
+    },
+    {
+      "rel": "apple-touch-icon",
+      "href": "https://cconline.sh/favicon.png",
+      "sizes": ""
+    }
+  ],
+  "meta": [
+    {
+      "name": null,
+      "property": null,
+      "content": null
+    },
+    {
+      "name": "viewport",
+      "property": null,
+      "content": "width=device-width, initial-scale=1"
+    },
+    {
+      "name": "description",
+      "property": null,
+      "content": "CCOnline is a Claude Code online and Claude Code web workspace: run the real Claude Code agent in a cloud sandbox from your browser."
+    }
+  ]
+}

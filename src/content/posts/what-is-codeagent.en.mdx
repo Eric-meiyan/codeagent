@@ -1,0 +1,13 @@
+export const meta = {
+  title: 'What is CodeAgent?',
+  description:
+    'CodeAgent turns a browser tab into a cloud coding workspace with a terminal agent, sandbox runtime, previews, and resumable archives.',
+  author_name: 'CodeAgent Team',
+  created_at: '2026-07-02',
+};
+
+CodeAgent is a browser-based AI coding workspace. The interface is simple: open a session, describe what you want to build or fix, and watch the agent work in a real terminal backed by an isolated cloud runtime.
+
+The important distinction is that CodeAgent is not only a chat UI. The product path is built around terminal bytes, tmux sessions, workspace directories, preview routes, and object-storage archives. That lets the agent run commands, edit files, install dependencies, open previews, and resume work after a runtime restarts.
+
+The current product skeleton focuses on the control plane: landing page, accounts, billing, credits, admin settings, and a `/code` workspace shell. The runtime work validated in the spikes can be connected next.

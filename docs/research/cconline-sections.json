@@ -1,0 +1,731 @@
+{
+  "cssVars": {
+    "--background": "oklch(97.7% .004 75)",
+    "--border": "oklch(90.8% .005 75)",
+    "--card": "oklch(98.8% .003 75)",
+    "--foreground": "oklch(27.5% .007 60)",
+    "--muted": "oklch(94.8% .006 75)",
+    "--muted-foreground": "oklch(50% .005 60)",
+    "--primary": "oklch(64% .13 41)",
+    "--primary-foreground": "oklch(99% .005 75)",
+    "--radius": ".625rem"
+  },
+  "rootStyles": {
+    "background": "oklch(0.977 0.004 75) none repeat scroll 0% 0% / auto padding-box border-box",
+    "backgroundColor": "oklch(0.977 0.004 75)",
+    "border": "0px solid oklch(0.908 0.005 75)",
+    "color": "oklch(0.275 0.007 60)",
+    "display": "block",
+    "flexDirection": "row",
+    "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+    "fontSize": "16px",
+    "fontWeight": "400",
+    "height": "4791.75px",
+    "lineHeight": "24px",
+    "opacity": "1",
+    "position": "static",
+    "transition": "all",
+    "width": "1425px"
+  },
+  "sections": [
+    {
+      "className": "sticky top-0 z-50 w-full bg-background/80 backdrop-blur-sm",
+      "headings": [],
+      "id": "",
+      "imgs": [
+        {
+          "alt": "",
+          "h": 512,
+          "src": "https://cconline.sh/logo.svg",
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "borderRadius": "7px",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "400",
+            "height": "28px",
+            "lineHeight": "24px",
+            "maxWidth": "100%",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "28px"
+          },
+          "w": 512
+        }
+      ],
+      "index": 0,
+      "rect": {
+        "height": 64,
+        "width": 1425,
+        "x": 0,
+        "y": 0
+      },
+      "styles": {
+        "background": "oklab(0.977 0.00103528 0.0038637 / 0.8) none repeat scroll 0% 0% / auto padding-box border-box",
+        "backgroundColor": "oklab(0.977 0.00103528 0.0038637 / 0.8)",
+        "border": "0px solid oklch(0.908 0.005 75)",
+        "color": "oklch(0.275 0.007 60)",
+        "display": "block",
+        "flexDirection": "row",
+        "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+        "fontSize": "16px",
+        "fontWeight": "400",
+        "height": "64px",
+        "lineHeight": "24px",
+        "opacity": "1",
+        "position": "sticky",
+        "transition": "all",
+        "width": "1425px",
+        "zIndex": "50"
+      },
+      "tag": "HEADER",
+      "texts": [
+        "CCOnline",
+        "Features",
+        "Pricing",
+        "Switch language",
+        "Toggle theme",
+        "Get Started"
+      ]
+    },
+    {
+      "className": "relative isolate flex flex-col items-center justify-center overflow-hidden px-4 pt-24 pb-16 sm:pt-34 sm:pb-24",
+      "headings": [
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Libre Baskerville\", serif, ui-serif, Georgia, Cambria, \"Times New Roman\", \"Noto Serif SC\", \"Source Han Serif SC\", \"Songti SC\", SimSun, Times, serif",
+            "fontSize": "60px",
+            "fontWeight": "400",
+            "height": "63px",
+            "letterSpacing": "-1.5px",
+            "lineHeight": "63px",
+            "marginBottom": "32px",
+            "maxWidth": "1152px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "1152px"
+          },
+          "tag": "H1",
+          "text": "Claude Code in your browser."
+        }
+      ],
+      "id": "",
+      "imgs": [
+        {
+          "alt": "CCOnline workspace preview",
+          "h": 1458,
+          "src": "https://cconline.sh/imgs/landing/cconline-preview.png",
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "1px solid oklab(0.908 0.00129409 0.00482963 / 0.7)",
+            "borderRadius": "24px",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "400",
+            "height": "512.758px",
+            "lineHeight": "24px",
+            "maxWidth": "100%",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "1006px"
+          },
+          "w": 2866
+        }
+      ],
+      "index": 1,
+      "rect": {
+        "height": 1086.7578125,
+        "width": 1425,
+        "x": 0,
+        "y": 64
+      },
+      "styles": {
+        "alignItems": "center",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+        "border": "0px solid oklch(0.908 0.005 75)",
+        "color": "oklch(0.275 0.007 60)",
+        "display": "flex",
+        "flexDirection": "column",
+        "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+        "fontSize": "16px",
+        "fontWeight": "400",
+        "height": "1086.76px",
+        "justifyContent": "center",
+        "lineHeight": "24px",
+        "opacity": "1",
+        "paddingBottom": "96px",
+        "paddingLeft": "16px",
+        "paddingRight": "16px",
+        "paddingTop": "136px",
+        "position": "relative",
+        "transition": "all",
+        "width": "1425px"
+      },
+      "tag": "SECTION",
+      "texts": [
+        "CCOnline is a Claude Code web workspace for building, fixing, and shipping code from a cloud sandbox — no install, no setup.",
+        "Start Claude Code online",
+        "Pricing"
+      ]
+    },
+    {
+      "className": "px-4 py-24 sm:py-32",
+      "headings": [
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Libre Baskerville\", serif, ui-serif, Georgia, Cambria, \"Times New Roman\", \"Noto Serif SC\", \"Source Han Serif SC\", \"Songti SC\", SimSun, Times, serif",
+            "fontSize": "48px",
+            "fontWeight": "400",
+            "height": "96px",
+            "letterSpacing": "-1.2px",
+            "lineHeight": "48px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "1024px"
+          },
+          "tag": "H2",
+          "text": "Claude Code web, with the full development loop"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "500",
+            "height": "24px",
+            "lineHeight": "24px",
+            "marginBottom": "8px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "278px"
+          },
+          "tag": "H3",
+          "text": "Real Claude Code online"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "500",
+            "height": "24px",
+            "lineHeight": "24px",
+            "marginBottom": "8px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "278px"
+          },
+          "tag": "H3",
+          "text": "Cloud sandbox for every session"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "500",
+            "height": "24px",
+            "lineHeight": "24px",
+            "marginBottom": "8px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "278px"
+          },
+          "tag": "H3",
+          "text": "Build, test, and iterate"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "500",
+            "height": "24px",
+            "lineHeight": "24px",
+            "marginBottom": "8px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "278px"
+          },
+          "tag": "H3",
+          "text": "Resume your coding sessions"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "500",
+            "height": "24px",
+            "lineHeight": "24px",
+            "marginBottom": "8px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "278px"
+          },
+          "tag": "H3",
+          "text": "Claude Code from any browser"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "500",
+            "height": "24px",
+            "lineHeight": "24px",
+            "marginBottom": "8px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "278px"
+          },
+          "tag": "H3",
+          "text": "Credits for sandbox and models"
+        }
+      ],
+      "id": "features",
+      "imgs": [],
+      "index": 2,
+      "rect": {
+        "height": 978,
+        "width": 1425,
+        "x": 0,
+        "y": 1150.7578125
+      },
+      "styles": {
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+        "border": "0px solid oklch(0.908 0.005 75)",
+        "color": "oklch(0.275 0.007 60)",
+        "display": "block",
+        "flexDirection": "row",
+        "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+        "fontSize": "16px",
+        "fontWeight": "400",
+        "height": "978px",
+        "lineHeight": "24px",
+        "opacity": "1",
+        "paddingBottom": "128px",
+        "paddingLeft": "16px",
+        "paddingRight": "16px",
+        "paddingTop": "128px",
+        "position": "static",
+        "transition": "all",
+        "width": "1425px"
+      },
+      "tag": "SECTION",
+      "texts": [
+        "Run the Claude Code CLI, a Linux sandbox, terminals, file editing, previews, and persisted sessions from one browser workspace.",
+        "Not a chat clone — the actual Claude Code CLI runs in a live terminal, reads files, executes commands, edits code, and recovers from errors.",
+        "Each Claude Code web session gets an isolated Linux sandbox with Node, git, package managers, and a real shell in seconds.",
+        "Give the agent a goal and it works across your project: multi-file edits, dependency installs, test runs, previews, and fixes.",
+        "Workspace files and Claude Code session history can persist, so you can close the tab and continue later from the same project state.",
+        "Use Claude Code online on a laptop, tablet, or borrowed machine. No SSH keys, Docker setup, or local toolchain required.",
+        "Use one clear credit balance for sandbox runtime and platform model usage, with BYOK available when you want to use your own model key."
+      ]
+    },
+    {
+      "className": "px-4 py-24 sm:py-32 border-t border-border",
+      "headings": [
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Libre Baskerville\", serif, ui-serif, Georgia, Cambria, \"Times New Roman\", \"Noto Serif SC\", \"Source Han Serif SC\", \"Songti SC\", SimSun, Times, serif",
+            "fontSize": "48px",
+            "fontWeight": "400",
+            "height": "48px",
+            "letterSpacing": "-1.2px",
+            "lineHeight": "48px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "1088px"
+          },
+          "tag": "H2",
+          "text": "Pricing"
+        }
+      ],
+      "id": "pricing",
+      "imgs": [],
+      "index": 3,
+      "rect": {
+        "height": 963,
+        "width": 1425,
+        "x": 0,
+        "y": 2128.7578125
+      },
+      "styles": {
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+        "color": "oklch(0.275 0.007 60)",
+        "display": "block",
+        "flexDirection": "row",
+        "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+        "fontSize": "16px",
+        "fontWeight": "400",
+        "height": "963px",
+        "lineHeight": "24px",
+        "opacity": "1",
+        "paddingBottom": "128px",
+        "paddingLeft": "16px",
+        "paddingRight": "16px",
+        "paddingTop": "128px",
+        "position": "static",
+        "transition": "all",
+        "width": "1425px"
+      },
+      "tag": "SECTION",
+      "texts": [
+        "Plans grant monthly credits. Top-up credits remain usable while valid, even if a subscription ends.",
+        "Starter",
+        "For light coding sessions",
+        "Get Started",
+        "BYOK supported with your own model API key",
+        "CCOnline default platform model included",
+        "Credits cover sandbox runtime",
+        "Cloud sandbox workspace included",
+        "Standard",
+        "Standard monthly usage",
+        "Get Started",
+        "BYOK supported with your own model API key",
+        "Includes the CCOnline default platform model",
+        "Monthly credits for sandbox runtime and platform model usage",
+        "Cloud sandbox workspace included",
+        "Workspace files and chat history persist",
+        "Pro",
+        "Extended usage for serious builders",
+        "Get Started",
+        "BYOK supported with your own model API key",
+        "Includes the CCOnline default platform model",
+        "Monthly credits for sandbox runtime and platform model usage",
+        "Workspace files and chat history persist",
+        "More room for long-running coding sessions",
+        "Highest limits",
+        "Dedicated support"
+      ]
+    },
+    {
+      "className": "px-4 py-24 sm:py-32",
+      "headings": [
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Libre Baskerville\", serif, ui-serif, Georgia, Cambria, \"Times New Roman\", \"Noto Serif SC\", \"Source Han Serif SC\", \"Songti SC\", SimSun, Times, serif",
+            "fontSize": "48px",
+            "fontWeight": "500",
+            "height": "48px",
+            "letterSpacing": "-1.2px",
+            "lineHeight": "48px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "768px"
+          },
+          "tag": "H2",
+          "text": "Frequently asked questions"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "flex",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "400",
+            "height": "74px",
+            "lineHeight": "24px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "768px"
+          },
+          "tag": "H3",
+          "text": "Is CCOnline real Claude Code online?"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "flex",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "400",
+            "height": "74px",
+            "lineHeight": "24px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "768px"
+          },
+          "tag": "H3",
+          "text": "Where does a Claude Code web session run?"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "flex",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "400",
+            "height": "74px",
+            "lineHeight": "24px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "768px"
+          },
+          "tag": "H3",
+          "text": "Do I need to install Claude Code locally?"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "flex",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "400",
+            "height": "74px",
+            "lineHeight": "24px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "768px"
+          },
+          "tag": "H3",
+          "text": "How is it billed?"
+        },
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "flex",
+            "flexDirection": "row",
+            "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+            "fontSize": "16px",
+            "fontWeight": "400",
+            "height": "74px",
+            "lineHeight": "24px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "768px"
+          },
+          "tag": "H3",
+          "text": "Is my code private?"
+        }
+      ],
+      "id": "faq",
+      "imgs": [],
+      "index": 4,
+      "rect": {
+        "height": 786,
+        "width": 1425,
+        "x": 0,
+        "y": 3091.7578125
+      },
+      "styles": {
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+        "border": "0px solid oklch(0.908 0.005 75)",
+        "color": "oklch(0.275 0.007 60)",
+        "display": "block",
+        "flexDirection": "row",
+        "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+        "fontSize": "16px",
+        "fontWeight": "400",
+        "height": "786px",
+        "lineHeight": "24px",
+        "opacity": "1",
+        "paddingBottom": "128px",
+        "paddingLeft": "16px",
+        "paddingRight": "16px",
+        "paddingTop": "128px",
+        "position": "static",
+        "transition": "all",
+        "width": "1425px"
+      },
+      "tag": "SECTION",
+      "texts": [
+        "Everything you need to know before getting started.",
+        "Is CCOnline real Claude Code online?",
+        "Where does a Claude Code web session run?",
+        "Do I need to install Claude Code locally?",
+        "How is it billed?",
+        "Is my code private?"
+      ]
+    },
+    {
+      "className": "px-4 pb-24 sm:pb-24",
+      "headings": [
+        {
+          "styles": {
+            "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+            "border": "0px solid oklch(0.908 0.005 75)",
+            "color": "oklch(0.275 0.007 60)",
+            "display": "block",
+            "flexDirection": "row",
+            "fontFamily": "\"Libre Baskerville\", serif, ui-serif, Georgia, Cambria, \"Times New Roman\", \"Noto Serif SC\", \"Source Han Serif SC\", \"Songti SC\", SimSun, Times, serif",
+            "fontSize": "48px",
+            "fontWeight": "500",
+            "height": "105.594px",
+            "letterSpacing": "-1.2px",
+            "lineHeight": "52.8px",
+            "maxWidth": "768px",
+            "opacity": "1",
+            "position": "static",
+            "transition": "all",
+            "width": "768px"
+          },
+          "tag": "H2",
+          "text": "Open Claude Code online in seconds."
+        }
+      ],
+      "id": "",
+      "imgs": [],
+      "index": 5,
+      "rect": {
+        "height": 494.09375,
+        "width": 1425,
+        "x": 0,
+        "y": 3877.7578125
+      },
+      "styles": {
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+        "border": "0px solid oklch(0.908 0.005 75)",
+        "color": "oklch(0.275 0.007 60)",
+        "display": "block",
+        "flexDirection": "row",
+        "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+        "fontSize": "16px",
+        "fontWeight": "400",
+        "height": "494.094px",
+        "lineHeight": "24px",
+        "opacity": "1",
+        "paddingBottom": "96px",
+        "paddingLeft": "16px",
+        "paddingRight": "16px",
+        "position": "static",
+        "transition": "all",
+        "width": "1425px"
+      },
+      "tag": "SECTION",
+      "texts": [
+        "Describe what you want to build and let Claude Code work inside a live cloud sandbox, directly from your browser.",
+        "Open Claude Code web"
+      ]
+    },
+    {
+      "className": "bg-neutral-950 text-neutral-100",
+      "headings": [],
+      "id": "",
+      "imgs": [],
+      "index": 6,
+      "rect": {
+        "height": 419.8984375,
+        "width": 1425,
+        "x": 0,
+        "y": 4371.8515625
+      },
+      "styles": {
+        "background": "oklch(0.145 0 0) none repeat scroll 0% 0% / auto padding-box border-box",
+        "backgroundColor": "oklch(0.145 0 0)",
+        "border": "0px solid oklch(0.908 0.005 75)",
+        "color": "oklch(0.97 0 0)",
+        "display": "block",
+        "flexDirection": "row",
+        "fontFamily": "\"Inter Variable\", Inter, sans-serif, -apple-system, \"system-ui\", \"Segoe UI\", Helvetica, Arial, sans-serif",
+        "fontSize": "16px",
+        "fontWeight": "400",
+        "height": "419.898px",
+        "lineHeight": "24px",
+        "opacity": "1",
+        "position": "static",
+        "transition": "all",
+        "width": "1425px"
+      },
+      "tag": "FOOTER",
+      "texts": [
+        "Claude Code online, in your browser.",
+        "Feature",
+        "Pricing",
+        "Pricing",
+        "Code",
+        "Code",
+        "Legal",
+        "Privacy Policy",
+        "Privacy Policy",
+        "Terms of Service",
+        "Terms of Service",
+        "English",
+        "Built with❤️ShipAny"
+      ]
+    }
+  ]
+}
