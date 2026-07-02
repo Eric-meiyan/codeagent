@@ -1,6 +1,11 @@
 // Pure helpers for the CodeAgent runtime session. No DOM / browser deps —
 // safe to run under tsx and to import from server functions.
 
+// Lossy by design: lowercases and strips everything outside [a-z0-9-], so
+// two distinct auth user ids could in theory collapse to the same slug and
+// share a runtime container namespace. Acceptable for round 1 (random
+// better-auth ids); revisit if round 2 moves to token-based auth with
+// user-chosen or predictable ids.
 export function sanitizeUserId(raw: string): string {
   const slug = (raw ?? '')
     .toLowerCase()

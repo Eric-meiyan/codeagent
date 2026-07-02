@@ -55,18 +55,26 @@ export function useTerminalSession({
     socketRef.current = socket;
 
     socket.addEventListener('open', () => {
+      if (socketRef.current !== socket) return;
       setStatus('connected');
       sendResize();
     });
     socket.addEventListener('message', (event) => {
+      if (socketRef.current !== socket) return;
       if (typeof event.data === 'string') {
         term.write(event.data);
       } else {
         term.write(new Uint8Array(event.data as ArrayBuffer));
       }
     });
-    socket.addEventListener('close', () => setStatus('closed'));
-    socket.addEventListener('error', () => setStatus('error'));
+    socket.addEventListener('close', () => {
+      if (socketRef.current !== socket) return;
+      setStatus('closed');
+    });
+    socket.addEventListener('error', () => {
+      if (socketRef.current !== socket) return;
+      setStatus('error');
+    });
   }, [runtimeBase, userId, sessionId, sendResize]);
 
   const reconnect = useCallback(() => connect(), [connect]);

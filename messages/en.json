@@ -867,7 +867,6 @@
   "code.runtime.ready": "ready",
   "code.runtime.attached": "attached",
   "code.terminal.title": "CodeAgent terminal",
-  "code.terminal.status": "connected",
   "code.terminal.connecting": "connecting…",
   "code.terminal.connected": "connected",
   "code.terminal.closed": "disconnected",
@@ -885,6 +884,5 @@
   "code.preview.title": "Live preview",
   "code.preview.subtitle": "Session-scoped preview output appears beside the terminal.",
   "code.archive.title": "Archive",
-  "code.archive.subtitle": "Workspace files can be persisted and restored across runtime restarts.",
-  "code.archive.digest": "last checkpoint verified"
+  "code.archive.subtitle": "Workspace files can be persisted and restored across runtime restarts."
 }

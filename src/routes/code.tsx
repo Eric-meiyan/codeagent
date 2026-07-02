@@ -57,7 +57,9 @@ function CodeWorkspacePage() {
         throw new Error(payload.error || res.statusText);
       }
       if (label === 'health') {
-        setActionMsg(`${payload.tmux ?? ''} / ${payload.claude ?? ''}`.trim());
+        setActionMsg(
+          [payload.tmux, payload.claude].filter(Boolean).join(' / ') || 'ok'
+        );
       } else if (payload.digest) {
         setActionMsg(`${label}: ${String(payload.digest).slice(0, 12)}…`);
       } else {

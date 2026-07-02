@@ -867,7 +867,6 @@
   "code.runtime.ready": "就绪",
   "code.runtime.attached": "已连接",
   "code.terminal.title": "CodeAgent 终端",
-  "code.terminal.status": "已连接",
   "code.terminal.connecting": "连接中…",
   "code.terminal.connected": "已连接",
   "code.terminal.closed": "已断开",
@@ -885,6 +884,5 @@
   "code.preview.title": "实时预览",
   "code.preview.subtitle": "会话级预览输出会显示在终端旁边。",
   "code.archive.title": "归档",
-  "code.archive.subtitle": "工作区文件可在运行时重启后持久化并恢复。",
-  "code.archive.digest": "最近检查点已验证"
+  "code.archive.subtitle": "工作区文件可在运行时重启后持久化并恢复。"
 }
