@@ -90,8 +90,13 @@ function CodeWorkspacePage() {
     setActionMsg(m['code.actions.running']());
     try {
       const idsToEnd = sessionId ? [sessionId] : sessions.map((s) => s.id);
+      const cleanupErrors: string[] = [];
       for (const id of idsToEnd) {
-        await runSessionAction(id, 'end');
+        try {
+          await runSessionAction(id, 'end');
+        } catch (error) {
+          cleanupErrors.push((error as Error).message || 'cleanup failed');
+        }
       }
 
       const session = await apiPost<CodeSessionView>('/api/code/sessions', {
@@ -101,7 +106,12 @@ function CodeWorkspacePage() {
       setSessionId(session.id);
       setSelectedAgent(session.agent);
       setPreviewNonce(Date.now());
-      setActionMsg(`${m['code.actions.started']()}: ${shortId(session.id)}`);
+      const message = `${m['code.actions.started']()}: ${shortId(session.id)}`;
+      setActionMsg(
+        cleanupErrors.length
+          ? `${message} - ${m['code.actions.cleanup_warning']()}`
+          : message
+      );
     } catch (err) {
       setActionMsg((err as Error).message || 'error');
     } finally {
@@ -530,18 +540,19 @@ function Panel({
 const getCodeSession = createServerFn().handler(async () => {
   const { getRequest } = await import('@tanstack/react-start/server');
   const { getAuth } = await import('@/core/auth');
-  const { getOrCreateActiveSession, listSessions } =
-    await import('@/modules/code/service');
+  const { listSessions } = await import('@/modules/code/service');
+  const { sanitizeUserId } = await import('@/modules/code/runtime');
 
   const request = getRequest();
   const session = await getAuth().api.getSession({ headers: request.headers });
   if (!session?.user) return null;
 
-  const activeSession = await getOrCreateActiveSession(session.user.id);
   const sessions = await listSessions(session.user.id);
+  const activeSession = sessions[0] ?? null;
 
   return {
-    runtimeUserId: activeSession.runtimeUserId,
+    runtimeUserId:
+      activeSession?.runtimeUserId ?? sanitizeUserId(session.user.id),
     session: activeSession,
     sessions,
   };

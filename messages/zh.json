@@ -884,6 +884,7 @@
   "code.actions.end": "结束",
   "code.actions.ended": "会话已结束",
   "code.actions.started": "会话已就绪",
+  "code.actions.cleanup_warning": "旧会话清理失败，新会话已启动",
   "code.actions.refresh_preview": "刷新预览",
   "code.actions.running": "执行中…",
   "code.diff.soon": "结构化 diff 将在后续版本支持。",

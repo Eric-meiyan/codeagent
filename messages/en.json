@@ -884,6 +884,7 @@
   "code.actions.end": "End",
   "code.actions.ended": "Session ended",
   "code.actions.started": "Session ready",
+  "code.actions.cleanup_warning": "Previous session cleanup failed; new session started",
   "code.actions.refresh_preview": "Refresh preview",
   "code.actions.running": "running…",
   "code.diff.soon": "Structured diff is coming in a later release.",
