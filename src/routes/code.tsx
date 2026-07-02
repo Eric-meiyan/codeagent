@@ -1,29 +1,74 @@
-import type { ReactNode } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { useRef, useState, type ReactNode } from 'react';
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createServerFn } from '@tanstack/react-start';
 import {
   Archive,
-  CheckCircle2,
   Cloud,
   FileDiff,
-  Gauge,
   Play,
   Plus,
   Terminal,
   type LucideIcon,
 } from 'lucide-react';
 
+import '@xterm/xterm/css/xterm.css';
+
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
+import {
+  actionUrl,
+  generateSessionId,
+  previewUrl,
+} from '@/modules/code/runtime';
+import {
+  useTerminalSession,
+  type TerminalStatus,
+} from '@/modules/code/use-terminal-session';
 import { cn } from '@/lib/utils';
 import { m } from '@/paraglide/messages.js';
 import { Button, buttonVariants } from '@/components/ui/button';
 
 function CodeWorkspacePage() {
-  const sessions = [
-    m['code.sessions.current'](),
-    m['code.sessions.preview'](),
-    m['code.sessions.archive'](),
-  ];
+  const loader = Route.useLoaderData();
+  const [sessionId, setSessionId] = useState(loader.sessionId);
+  const terminalRef = useRef<HTMLDivElement | null>(null);
+  const { status, reconnect } = useTerminalSession({
+    runtimeBase: loader.runtimeBase,
+    userId: loader.userId,
+    sessionId,
+    containerRef: terminalRef,
+  });
+
+  const newSession = () => setSessionId(generateSessionId());
+
+  const [actionMsg, setActionMsg] = useState<string>('');
+  const [previewNonce, setPreviewNonce] = useState(0);
+
+  const runAction = async (
+    label: string,
+    url: string,
+    method: 'GET' | 'POST'
+  ) => {
+    setActionMsg(m['code.actions.running']());
+    try {
+      const res = await fetch(url, { method });
+      const payload = await res.json().catch(() => ({ ok: false }));
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload.error || res.statusText);
+      }
+      if (label === 'health') {
+        setActionMsg(
+          [payload.tmux, payload.claude].filter(Boolean).join(' / ') || 'ok'
+        );
+      } else if (payload.digest) {
+        setActionMsg(`${label}: ${String(payload.digest).slice(0, 12)}…`);
+      } else {
+        setActionMsg(`${label}: ok`);
+      }
+    } catch (err) {
+      setActionMsg((err as Error).message || 'error');
+    }
+  };
 
   return (
     <div className="bg-background text-foreground min-h-screen">
@@ -65,27 +110,17 @@ function CodeWorkspacePage() {
               size="icon"
               className="size-8 rounded-full"
               aria-label={m['code.sessions.new']()}
+              onClick={newSession}
             >
               <Plus className="size-4" />
             </Button>
           </div>
 
           <div className="mt-6 space-y-2">
-            {sessions.map((session, index) => (
-              <button
-                key={session}
-                className="hover:bg-muted flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors"
-              >
-                <span
-                  className={
-                    index === 0
-                      ? 'bg-primary size-2 rounded-full'
-                      : 'bg-muted-foreground/30 size-2 rounded-full'
-                  }
-                />
-                <span className="truncate">{session}</span>
-              </button>
-            ))}
+            <div className="bg-muted flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm">
+              <span className="bg-primary size-2 rounded-full" />
+              <span className="truncate font-mono text-xs">{sessionId}</span>
+            </div>
           </div>
 
           <div className="border-border mt-6 rounded-lg border p-3">
@@ -116,31 +151,22 @@ function CodeWorkspacePage() {
                   {m['code.terminal.title']()}
                 </span>
               </div>
-              <span className="text-muted-foreground text-xs">
-                {m['code.terminal.status']()}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs">
+                  {statusLabel(status)}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  onClick={reconnect}
+                >
+                  {m['code.terminal.reconnect']()}
+                </Button>
+              </div>
             </div>
-            <div className="min-h-[520px] bg-[#17130f] p-5 font-mono text-sm leading-7 text-[#f4eadf]">
-              <p className="text-[#d9603a]">
-                $ codeagent start --session current
-              </p>
-              <p>{m['code.terminal.line_1']()}</p>
-              <p className="mt-4 text-[#9ee493]">
-                <CheckCircle2 className="mr-2 inline size-4" />
-                {m['code.terminal.line_2']()}
-              </p>
-              <p className="text-[#9ee493]">
-                <CheckCircle2 className="mr-2 inline size-4" />
-                {m['code.terminal.line_3']()}
-              </p>
-              <p className="text-[#9ee493]">
-                <CheckCircle2 className="mr-2 inline size-4" />
-                {m['code.terminal.line_4']()}
-              </p>
-              <p className="mt-4 text-[#f3c98b]">
-                {m['code.terminal.line_5']()}
-              </p>
-              <p className="mt-6 text-[#f4eadf]/70">▌</p>
+            <div className="relative min-h-[520px] bg-[#17130f] p-3">
+              <div ref={terminalRef} className="h-[520px] w-full" />
             </div>
           </div>
 
@@ -150,12 +176,9 @@ function CodeWorkspacePage() {
               title={m['code.diff.title']()}
               subtitle={m['code.diff.subtitle']()}
             >
-              <div className="bg-muted/50 rounded-md p-3 font-mono text-xs leading-6">
-                <p className="text-emerald-700">+ app/routes/code.tsx</p>
-                <p className="text-emerald-700">+ terminal websocket hook</p>
-                <p className="text-muted-foreground"> pnpm build</p>
-                <p className="text-emerald-700">+ production bundle ready</p>
-              </div>
+              <p className="text-muted-foreground text-xs">
+                {m['code.diff.soon']()}
+              </p>
             </Panel>
 
             <Panel
@@ -163,14 +186,21 @@ function CodeWorkspacePage() {
               title={m['code.preview.title']()}
               subtitle={m['code.preview.subtitle']()}
             >
-              <div className="border-border bg-background rounded-md border p-3">
-                <div className="bg-primary/80 h-3 w-24 rounded-full" />
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  <div className="bg-muted h-14 rounded-md" />
-                  <div className="bg-muted h-14 rounded-md" />
-                  <div className="bg-muted h-14 rounded-md" />
-                </div>
+              <div className="border-border bg-background overflow-hidden rounded-md border">
+                <iframe
+                  title="preview"
+                  className="h-56 w-full"
+                  src={`${previewUrl(loader.runtimeBase, loader.userId, sessionId)}?t=${previewNonce}`}
+                />
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 h-7 rounded-full text-xs"
+                onClick={() => setPreviewNonce(Date.now())}
+              >
+                {m['code.actions.refresh_preview']()}
+              </Button>
             </Panel>
 
             <Panel
@@ -178,15 +208,67 @@ function CodeWorkspacePage() {
               title={m['code.archive.title']()}
               subtitle={m['code.archive.subtitle']()}
             >
-              <div className="flex items-center gap-3 text-sm">
-                <Gauge className="text-primary size-5" />
-                <div>
-                  <p className="font-medium">{m['code.archive.digest']()}</p>
-                  <p className="text-muted-foreground text-xs">
-                    workspaces/demo/current/workspace.tar.gz
-                  </p>
-                </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  onClick={() =>
+                    runAction(
+                      'health',
+                      actionUrl(
+                        loader.runtimeBase,
+                        'container-health',
+                        loader.userId
+                      ),
+                      'GET'
+                    )
+                  }
+                >
+                  {m['code.actions.health']()}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  onClick={() =>
+                    runAction(
+                      'archive',
+                      actionUrl(
+                        loader.runtimeBase,
+                        'archive',
+                        loader.userId,
+                        sessionId
+                      ),
+                      'POST'
+                    )
+                  }
+                >
+                  {m['code.actions.archive']()}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  onClick={() =>
+                    runAction(
+                      'restore',
+                      actionUrl(
+                        loader.runtimeBase,
+                        'restore',
+                        loader.userId,
+                        sessionId
+                      ),
+                      'POST'
+                    )
+                  }
+                >
+                  {m['code.actions.restore']()}
+                </Button>
               </div>
+              <p className="text-muted-foreground mt-3 min-h-4 font-mono text-xs">
+                {actionMsg}
+              </p>
             </Panel>
           </div>
         </section>
@@ -202,6 +284,21 @@ function Metric({ label, value }: { label: string; value: string }) {
       <span className="font-medium">{value}</span>
     </div>
   );
+}
+
+function statusLabel(status: TerminalStatus): string {
+  switch (status) {
+    case 'connecting':
+      return m['code.terminal.connecting']();
+    case 'connected':
+      return m['code.terminal.connected']();
+    case 'error':
+      return m['code.terminal.error']();
+    case 'closed':
+      return m['code.terminal.closed']();
+    default:
+      return m['code.terminal.idle']();
+  }
 }
 
 function Panel({
@@ -233,6 +330,32 @@ function Panel({
   );
 }
 
+const getCodeSession = createServerFn().handler(async () => {
+  const { getRequest } = await import('@tanstack/react-start/server');
+  const { getAuth } = await import('@/core/auth');
+  const { sanitizeUserId, generateSessionId } =
+    await import('@/modules/code/runtime');
+
+  const request = getRequest();
+  const session = await getAuth().api.getSession({ headers: request.headers });
+  if (!session?.user) return null;
+
+  return {
+    userId: sanitizeUserId(session.user.id),
+    sessionId: generateSessionId(),
+  };
+});
+
 export const Route = createFileRoute('/code')({
+  loader: async () => {
+    const session = await getCodeSession();
+    if (!session) {
+      throw redirect({ to: '/sign-in' });
+    }
+    return {
+      ...session,
+      runtimeBase: envConfigs.runtime_base_url,
+    };
+  },
   component: CodeWorkspacePage,
 });

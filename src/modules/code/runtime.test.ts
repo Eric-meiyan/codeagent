@@ -1,0 +1,49 @@
+import assert from 'node:assert/strict';
+
+import {
+  actionUrl,
+  generateSessionId,
+  previewUrl,
+  sanitizeUserId,
+  terminalWsUrl,
+} from './runtime.ts';
+
+// sanitizeUserId
+assert.equal(sanitizeUserId('User_123!@#'), 'user-123');
+assert.equal(sanitizeUserId('  --Ab--  '), 'ab');
+assert.equal(sanitizeUserId(''), 'user');
+assert.equal(sanitizeUserId('已经abc'), 'abc');
+
+// generateSessionId
+const a = generateSessionId();
+const b = generateSessionId();
+assert.match(a, /^[a-z0-9-]+$/);
+assert.notEqual(a, b);
+
+// terminalWsUrl
+assert.equal(
+  terminalWsUrl('https://rt.example.dev', 'u1', 's1'),
+  'wss://rt.example.dev/terminal/u1/s1'
+);
+assert.equal(
+  terminalWsUrl('http://localhost:8787', 'u1', 's1'),
+  'ws://localhost:8787/terminal/u1/s1'
+);
+
+// actionUrl
+assert.equal(
+  actionUrl('https://rt.example.dev', 'container-health', 'u1'),
+  'https://rt.example.dev/container-health/u1'
+);
+assert.equal(
+  actionUrl('https://rt.example.dev', 'archive', 'u1', 's1'),
+  'https://rt.example.dev/archive/u1/s1'
+);
+
+// previewUrl
+assert.equal(
+  previewUrl('https://rt.example.dev', 'u1', 's1'),
+  'https://rt.example.dev/preview/u1/s1/'
+);
+
+console.log('runtime.test.ts OK');
