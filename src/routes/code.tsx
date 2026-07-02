@@ -5,7 +5,6 @@ import {
   Archive,
   Cloud,
   FileDiff,
-  Gauge,
   Play,
   Plus,
   Terminal,
@@ -16,7 +15,11 @@ import '@xterm/xterm/css/xterm.css';
 
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
-import { generateSessionId } from '@/modules/code/runtime';
+import {
+  actionUrl,
+  generateSessionId,
+  previewUrl,
+} from '@/modules/code/runtime';
 import {
   useTerminalSession,
   type TerminalStatus,
@@ -37,6 +40,33 @@ function CodeWorkspacePage() {
   });
 
   const newSession = () => setSessionId(generateSessionId());
+
+  const [actionMsg, setActionMsg] = useState<string>('');
+  const [previewNonce, setPreviewNonce] = useState(0);
+
+  const runAction = async (
+    label: string,
+    url: string,
+    method: 'GET' | 'POST'
+  ) => {
+    setActionMsg(m['code.actions.running']());
+    try {
+      const res = await fetch(url, { method });
+      const payload = await res.json().catch(() => ({ ok: false }));
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload.error || res.statusText);
+      }
+      if (label === 'health') {
+        setActionMsg(`${payload.tmux ?? ''} / ${payload.claude ?? ''}`.trim());
+      } else if (payload.digest) {
+        setActionMsg(`${label}: ${String(payload.digest).slice(0, 12)}…`);
+      } else {
+        setActionMsg(`${label}: ok`);
+      }
+    } catch (err) {
+      setActionMsg((err as Error).message || 'error');
+    }
+  };
 
   return (
     <div className="bg-background text-foreground min-h-screen">
@@ -129,7 +159,7 @@ function CodeWorkspacePage() {
                   className="h-7 rounded-full text-xs"
                   onClick={reconnect}
                 >
-                  重连
+                  {m['code.terminal.reconnect']()}
                 </Button>
               </div>
             </div>
@@ -144,12 +174,9 @@ function CodeWorkspacePage() {
               title={m['code.diff.title']()}
               subtitle={m['code.diff.subtitle']()}
             >
-              <div className="bg-muted/50 rounded-md p-3 font-mono text-xs leading-6">
-                <p className="text-emerald-700">+ app/routes/code.tsx</p>
-                <p className="text-emerald-700">+ terminal websocket hook</p>
-                <p className="text-muted-foreground"> pnpm build</p>
-                <p className="text-emerald-700">+ production bundle ready</p>
-              </div>
+              <p className="text-muted-foreground text-xs">
+                {m['code.diff.soon']()}
+              </p>
             </Panel>
 
             <Panel
@@ -157,14 +184,21 @@ function CodeWorkspacePage() {
               title={m['code.preview.title']()}
               subtitle={m['code.preview.subtitle']()}
             >
-              <div className="border-border bg-background rounded-md border p-3">
-                <div className="bg-primary/80 h-3 w-24 rounded-full" />
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  <div className="bg-muted h-14 rounded-md" />
-                  <div className="bg-muted h-14 rounded-md" />
-                  <div className="bg-muted h-14 rounded-md" />
-                </div>
+              <div className="border-border bg-background overflow-hidden rounded-md border">
+                <iframe
+                  title="preview"
+                  className="h-56 w-full"
+                  src={`${previewUrl(loader.runtimeBase, loader.userId, sessionId)}?t=${previewNonce}`}
+                />
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 h-7 rounded-full text-xs"
+                onClick={() => setPreviewNonce(Date.now())}
+              >
+                {m['code.actions.refresh_preview']()}
+              </Button>
             </Panel>
 
             <Panel
@@ -172,15 +206,67 @@ function CodeWorkspacePage() {
               title={m['code.archive.title']()}
               subtitle={m['code.archive.subtitle']()}
             >
-              <div className="flex items-center gap-3 text-sm">
-                <Gauge className="text-primary size-5" />
-                <div>
-                  <p className="font-medium">{m['code.archive.digest']()}</p>
-                  <p className="text-muted-foreground text-xs">
-                    workspaces/demo/current/workspace.tar.gz
-                  </p>
-                </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  onClick={() =>
+                    runAction(
+                      'health',
+                      actionUrl(
+                        loader.runtimeBase,
+                        'container-health',
+                        loader.userId
+                      ),
+                      'GET'
+                    )
+                  }
+                >
+                  {m['code.actions.health']()}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  onClick={() =>
+                    runAction(
+                      'archive',
+                      actionUrl(
+                        loader.runtimeBase,
+                        'archive',
+                        loader.userId,
+                        sessionId
+                      ),
+                      'POST'
+                    )
+                  }
+                >
+                  {m['code.actions.archive']()}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  onClick={() =>
+                    runAction(
+                      'restore',
+                      actionUrl(
+                        loader.runtimeBase,
+                        'restore',
+                        loader.userId,
+                        sessionId
+                      ),
+                      'POST'
+                    )
+                  }
+                >
+                  {m['code.actions.restore']()}
+                </Button>
               </div>
+              <p className="text-muted-foreground mt-3 min-h-4 font-mono text-xs">
+                {actionMsg}
+              </p>
             </Panel>
           </div>
         </section>
@@ -201,15 +287,15 @@ function Metric({ label, value }: { label: string; value: string }) {
 function statusLabel(status: TerminalStatus): string {
   switch (status) {
     case 'connecting':
-      return 'connecting…';
+      return m['code.terminal.connecting']();
     case 'connected':
-      return 'connected';
+      return m['code.terminal.connected']();
     case 'error':
-      return 'socket error';
+      return m['code.terminal.error']();
     case 'closed':
-      return 'disconnected';
+      return m['code.terminal.closed']();
     default:
-      return 'idle';
+      return m['code.terminal.idle']();
   }
 }
 
