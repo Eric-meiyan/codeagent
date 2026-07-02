@@ -28,6 +28,7 @@ export function useTerminalSession({
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
   const sendResize = useCallback(() => {
     const term = termRef.current;
@@ -120,6 +121,14 @@ export function useTerminalSession({
       termRef.current = term;
       fitRef.current = fit;
 
+      // The terminal's real pixel size settles after hydration/layout and can
+      // change without a window resize (side panels, font load, breakpoints).
+      // Track the container directly so xterm's cols/rows stay in sync with the
+      // dimensions we report to the PTY — otherwise Claude/tmux draw at the
+      // wrong width/height and the TUI renders garbled. Fires once on observe.
+      const resizeObserver = new ResizeObserver(() => sendResize());
+      resizeObserver.observe(container);
+      resizeObserverRef.current = resizeObserver;
       window.addEventListener('resize', sendResize);
       connect();
     })();
@@ -127,6 +136,8 @@ export function useTerminalSession({
     return () => {
       disposed = true;
       window.removeEventListener('resize', sendResize);
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
       socketRef.current?.close();
       socketRef.current = null;
       termRef.current?.dispose();
