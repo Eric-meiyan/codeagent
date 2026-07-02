@@ -1,9 +1,8 @@
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import {
   Archive,
-  CheckCircle2,
   Cloud,
   FileDiff,
   Gauge,
@@ -13,22 +12,31 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
+import '@xterm/xterm/css/xterm.css';
+
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
+import { generateSessionId } from '@/modules/code/runtime';
+import {
+  useTerminalSession,
+  type TerminalStatus,
+} from '@/modules/code/use-terminal-session';
 import { cn } from '@/lib/utils';
 import { m } from '@/paraglide/messages.js';
 import { Button, buttonVariants } from '@/components/ui/button';
 
 function CodeWorkspacePage() {
-  const { userId, sessionId, runtimeBase } = Route.useLoaderData();
-  void userId;
-  void runtimeBase;
+  const loader = Route.useLoaderData();
+  const [sessionId, setSessionId] = useState(loader.sessionId);
+  const terminalRef = useRef<HTMLDivElement | null>(null);
+  const { status, reconnect } = useTerminalSession({
+    runtimeBase: loader.runtimeBase,
+    userId: loader.userId,
+    sessionId,
+    containerRef: terminalRef,
+  });
 
-  const sessions = [
-    m['code.sessions.current'](),
-    m['code.sessions.preview'](),
-    m['code.sessions.archive'](),
-  ];
+  const newSession = () => setSessionId(generateSessionId());
 
   return (
     <div className="bg-background text-foreground min-h-screen">
@@ -65,35 +73,22 @@ function CodeWorkspacePage() {
               <p className="text-muted-foreground mt-1 text-xs">
                 {m['code.sessions.subtitle']()}
               </p>
-              <p className="text-muted-foreground mt-1 text-[11px]">
-                {sessionId}
-              </p>
             </div>
             <Button
               size="icon"
               className="size-8 rounded-full"
               aria-label={m['code.sessions.new']()}
+              onClick={newSession}
             >
               <Plus className="size-4" />
             </Button>
           </div>
 
           <div className="mt-6 space-y-2">
-            {sessions.map((session, index) => (
-              <button
-                key={session}
-                className="hover:bg-muted flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors"
-              >
-                <span
-                  className={
-                    index === 0
-                      ? 'bg-primary size-2 rounded-full'
-                      : 'bg-muted-foreground/30 size-2 rounded-full'
-                  }
-                />
-                <span className="truncate">{session}</span>
-              </button>
-            ))}
+            <div className="bg-muted flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm">
+              <span className="bg-primary size-2 rounded-full" />
+              <span className="truncate font-mono text-xs">{sessionId}</span>
+            </div>
           </div>
 
           <div className="border-border mt-6 rounded-lg border p-3">
@@ -124,31 +119,22 @@ function CodeWorkspacePage() {
                   {m['code.terminal.title']()}
                 </span>
               </div>
-              <span className="text-muted-foreground text-xs">
-                {m['code.terminal.status']()}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs">
+                  {statusLabel(status)}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  onClick={reconnect}
+                >
+                  重连
+                </Button>
+              </div>
             </div>
-            <div className="min-h-[520px] bg-[#17130f] p-5 font-mono text-sm leading-7 text-[#f4eadf]">
-              <p className="text-[#d9603a]">
-                $ codeagent start --session current
-              </p>
-              <p>{m['code.terminal.line_1']()}</p>
-              <p className="mt-4 text-[#9ee493]">
-                <CheckCircle2 className="mr-2 inline size-4" />
-                {m['code.terminal.line_2']()}
-              </p>
-              <p className="text-[#9ee493]">
-                <CheckCircle2 className="mr-2 inline size-4" />
-                {m['code.terminal.line_3']()}
-              </p>
-              <p className="text-[#9ee493]">
-                <CheckCircle2 className="mr-2 inline size-4" />
-                {m['code.terminal.line_4']()}
-              </p>
-              <p className="mt-4 text-[#f3c98b]">
-                {m['code.terminal.line_5']()}
-              </p>
-              <p className="mt-6 text-[#f4eadf]/70">▌</p>
+            <div className="relative min-h-[520px] bg-[#17130f] p-3">
+              <div ref={terminalRef} className="h-[520px] w-full" />
             </div>
           </div>
 
@@ -210,6 +196,21 @@ function Metric({ label, value }: { label: string; value: string }) {
       <span className="font-medium">{value}</span>
     </div>
   );
+}
+
+function statusLabel(status: TerminalStatus): string {
+  switch (status) {
+    case 'connecting':
+      return 'connecting…';
+    case 'connected':
+      return 'connected';
+    case 'error':
+      return 'socket error';
+    case 'closed':
+      return 'disconnected';
+    default:
+      return 'idle';
+  }
 }
 
 function Panel({
