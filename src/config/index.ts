@@ -20,6 +20,11 @@ export const envConfigs: Record<string, string> = {
   app_description: publicEnv('VITE_APP_DESCRIPTION') ?? 'Ship your SaaS faster',
   app_logo: publicEnv('VITE_APP_LOGO') ?? '/logo.svg',
 
+  // Runtime (public — browser connects directly)
+  runtime_base_url:
+    publicEnv('VITE_RUNTIME_BASE_URL') ??
+    'https://codeagent-spike-integrated-session-mvp.eric-wuyu1352.workers.dev',
+
   // Database
   database_url: procEnv.DATABASE_URL ?? '',
   database_auth_token: procEnv.DATABASE_AUTH_TOKEN ?? '',
