@@ -17,6 +17,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
+import type { CodeModelView } from '@/modules/code/models';
 import {
   CODE_SESSION_AGENTS,
   normalizeAgent,
@@ -57,14 +58,26 @@ interface CodeActionResponse {
   [key: string]: unknown;
 }
 
+interface CodeLoaderData {
+  runtimeUserId: string;
+  session: CodeSessionView | null;
+  sessions: CodeSessionView[];
+  models: CodeModelView[];
+  runtimeBase: string;
+}
+
 function CodeWorkspacePage() {
-  const loader = Route.useLoaderData();
+  const loader = Route.useLoaderData() as CodeLoaderData;
+  const initialAgent = loader.session?.agent ?? 'claude';
   const [sessions, setSessions] = useState<CodeSessionView[]>(loader.sessions);
   const [sessionId, setSessionId] = useState<string | null>(
     loader.session?.id ?? null
   );
-  const [selectedAgent, setSelectedAgent] = useState<CodeSessionAgent>(
-    loader.session?.agent ?? 'claude'
+  const [models] = useState<CodeModelView[]>(loader.models);
+  const [selectedAgent, setSelectedAgent] =
+    useState<CodeSessionAgent>(initialAgent);
+  const [selectedModel, setSelectedModel] = useState<string>(
+    loader.session?.model || defaultModelFor(models, initialAgent)?.model || ''
   );
   const [actionMsg, setActionMsg] = useState<string>('');
   const [busyAction, setBusyAction] = useState<string>('');
@@ -74,6 +87,11 @@ function CodeWorkspacePage() {
   const currentSession =
     sessions.find((session) => session.id === sessionId) ?? null;
   const currentAgent = currentSession?.agent ?? selectedAgent;
+  const currentModel = currentSession?.model || selectedModel;
+  const availableModels = models.filter(
+    (model) => model.agent === selectedAgent
+  );
+  const canCreateSession = Boolean(selectedModel && availableModels.length);
   const hasSession = Boolean(sessionId);
   const controlsDisabled = !hasSession || Boolean(busyAction);
 
@@ -82,10 +100,15 @@ function CodeWorkspacePage() {
     userId: loader.runtimeUserId,
     sessionId,
     agent: currentSession?.agent ?? selectedAgent,
+    model: currentSession?.model || selectedModel,
     containerRef: terminalRef,
   });
 
   const newSession = async () => {
+    if (!canCreateSession) {
+      setActionMsg(m['code.model.configure_required']());
+      return;
+    }
     setBusyAction('new');
     setActionMsg(m['code.actions.running']());
     try {
@@ -101,10 +124,12 @@ function CodeWorkspacePage() {
 
       const session = await apiPost<CodeSessionView>('/api/code/sessions', {
         agent: selectedAgent,
+        model: selectedModel,
       });
       setSessions([session]);
       setSessionId(session.id);
       setSelectedAgent(session.agent);
+      setSelectedModel(session.model);
       setPreviewNonce(Date.now());
       const message = `${m['code.actions.started']()}: ${shortId(session.id)}`;
       setActionMsg(
@@ -193,7 +218,7 @@ function CodeWorkspacePage() {
               size="icon"
               className="size-8 rounded-full"
               aria-label={m['code.sessions.new']()}
-              disabled={Boolean(busyAction)}
+              disabled={Boolean(busyAction) || !canCreateSession}
               onClick={() => void newSession()}
             >
               <Plus className="size-4" />
@@ -206,7 +231,11 @@ function CodeWorkspacePage() {
             </Label>
             <Select
               value={selectedAgent}
-              onValueChange={(value) => setSelectedAgent(normalizeAgent(value))}
+              onValueChange={(value) => {
+                const agent = normalizeAgent(value);
+                setSelectedAgent(agent);
+                setSelectedModel(defaultModelFor(models, agent)?.model || '');
+              }}
               disabled={Boolean(busyAction)}
             >
               <SelectTrigger className="w-full">
@@ -220,6 +249,33 @@ function CodeWorkspacePage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <Label className="text-muted-foreground text-xs">
+              {m['code.model.new_session']()}
+            </Label>
+            <Select
+              value={selectedModel}
+              onValueChange={(value) => value && setSelectedModel(value)}
+              disabled={Boolean(busyAction) || availableModels.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={m['code.model.select']()} />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {availableModels.map((model) => (
+                  <SelectItem key={model.id} value={model.model}>
+                    {model.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {availableModels.length === 0 && (
+              <p className="text-muted-foreground text-xs">
+                {m['code.model.configure_required']()}
+              </p>
+            )}
           </div>
 
           <div className="mt-6 space-y-2">
@@ -239,6 +295,7 @@ function CodeWorkspacePage() {
                 onClick={() => {
                   setSessionId(session.id);
                   setSelectedAgent(session.agent);
+                  setSelectedModel(session.model);
                 }}
               >
                 <span
@@ -256,6 +313,9 @@ function CodeWorkspacePage() {
                   <span className="text-muted-foreground mt-0.5 flex items-center gap-1 text-[11px]">
                     <Bot className="size-3" />
                     {agentLabel(session.agent)}
+                  </span>
+                  <span className="text-muted-foreground mt-0.5 block truncate text-[11px]">
+                    {modelLabel(models, session)}
                   </span>
                 </span>
               </button>
@@ -275,6 +335,10 @@ function CodeWorkspacePage() {
               <Metric
                 label={m['code.agent.current']()}
                 value={agentLabel(currentAgent)}
+              />
+              <Metric
+                label={m['code.model.current']()}
+                value={modelLabel(models, currentModel)}
               />
               <Metric
                 label={m['code.runtime.tmux']()}
@@ -493,6 +557,23 @@ function agentLabel(agent: CodeSessionAgent) {
   }
 }
 
+function defaultModelFor(models: CodeModelView[], agent: CodeSessionAgent) {
+  return (
+    models.find((model) => model.agent === agent && model.isDefault) ??
+    models.find((model) => model.agent === agent)
+  );
+}
+
+function modelLabel(
+  models: CodeModelView[],
+  value: CodeSessionView | string | null | undefined
+) {
+  const modelId = typeof value === 'string' ? value : value?.model || '';
+  if (!modelId) return m['code.model.unselected']();
+  const model = models.find((item) => item.model === modelId);
+  return model?.label || modelId;
+}
+
 function statusLabel(status: TerminalStatus): string {
   switch (status) {
     case 'connecting':
@@ -541,6 +622,7 @@ const getCodeSession = createServerFn().handler(async () => {
   const { getRequest } = await import('@tanstack/react-start/server');
   const { getAuth } = await import('@/core/auth');
   const { listSessions } = await import('@/modules/code/service');
+  const { listEnabledCodeModels } = await import('@/modules/code/models');
   const { sanitizeUserId } = await import('@/modules/code/runtime');
 
   const request = getRequest();
@@ -549,12 +631,14 @@ const getCodeSession = createServerFn().handler(async () => {
 
   const sessions = await listSessions(session.user.id);
   const activeSession = sessions[0] ?? null;
+  const models = await listEnabledCodeModels();
 
   return {
     runtimeUserId:
       activeSession?.runtimeUserId ?? sanitizeUserId(session.user.id),
     session: activeSession,
     sessions,
+    models,
   };
 });
 

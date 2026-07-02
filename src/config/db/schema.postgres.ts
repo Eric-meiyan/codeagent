@@ -592,7 +592,33 @@ export type NewTicketMessage = typeof ticketMessage.$inferInsert;
 // ─── Custom tables ───────────────────────────────────────────────────────────
 // Add your own tables below this line.
 
-// ─── Code Sessions ───────────────────────────────────────────────────────────
+// ─── Code Models & Sessions ──────────────────────────────────────────────────
+
+export const codeModel = table(
+  'code_model',
+  {
+    id: text('id').primaryKey(),
+    agent: text('agent').notNull().default('claude'),
+    provider: text('provider').notNull().default('yunwu'),
+    model: text('model').notNull(),
+    label: text('label').notNull(),
+    baseUrl: text('base_url').notNull().default(''),
+    description: text('description').notNull().default(''),
+    enabled: boolean('enabled').default(true).notNull(),
+    isDefault: boolean('is_default').default(false).notNull(),
+    sort: integer('sort').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (t) => [
+    index('idx_code_model_agent_enabled').on(t.agent, t.enabled),
+    index('idx_code_model_agent_default').on(t.agent, t.isDefault),
+    index('idx_code_model_agent_sort').on(t.agent, t.sort),
+  ]
+);
 
 export const codeSession = table(
   'code_session',
@@ -603,6 +629,7 @@ export const codeSession = table(
       .references(() => user.id, { onDelete: 'cascade' }),
     runtimeUserId: text('runtime_user_id').notNull(),
     agent: text('agent').notNull().default('claude'),
+    model: text('model').notNull().default(''),
     status: text('status').notNull().default('active'),
     title: text('title').notNull().default(''),
     archiveKey: text('archive_key'),
@@ -660,6 +687,8 @@ export const userInvite = table(
 
 export type CodeSession = typeof codeSession.$inferSelect;
 export type NewCodeSession = typeof codeSession.$inferInsert;
+export type CodeModel = typeof codeModel.$inferSelect;
+export type NewCodeModel = typeof codeModel.$inferInsert;
 export type InviteCode = typeof inviteCode.$inferSelect;
 export type NewInviteCode = typeof inviteCode.$inferInsert;
 export type UserInvite = typeof userInvite.$inferSelect;

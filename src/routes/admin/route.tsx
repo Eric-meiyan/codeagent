@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import {
+  Bot,
   CreditCard,
   FolderOpen,
   Home,
@@ -63,6 +64,12 @@ function AdminLayout() {
       href: '/admin/tickets',
       label: m['admin.nav.tickets'](),
       icon: LifeBuoy,
+      group,
+    },
+    {
+      href: '/admin/code-models',
+      label: m['admin.nav.code_models'](),
+      icon: Bot,
       group,
     },
   ];

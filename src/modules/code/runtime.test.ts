@@ -39,6 +39,14 @@ assert.equal(
   terminalWsUrl('https://rt.example.dev', 'u1', 's1', 'codex'),
   'wss://rt.example.dev/terminal/u1/s1?agent=codex'
 );
+assert.equal(
+  terminalWsUrl('https://rt.example.dev', 'u1', 's1', 'claude', 'm1'),
+  'wss://rt.example.dev/terminal/u1/s1?model=m1'
+);
+assert.equal(
+  terminalWsUrl('https://rt.example.dev', 'u1', 's1', 'codex', 'm1'),
+  'wss://rt.example.dev/terminal/u1/s1?agent=codex&model=m1'
+);
 
 // actionUrl
 assert.equal(
@@ -52,6 +60,10 @@ assert.equal(
 assert.equal(
   actionUrl('https://rt.example.dev', 'clear', 'u1', 's1', 'codex'),
   'https://rt.example.dev/clear/u1/s1?agent=codex'
+);
+assert.equal(
+  actionUrl('https://rt.example.dev', 'clear', 'u1', 's1', 'codex', 'm1'),
+  'https://rt.example.dev/clear/u1/s1?agent=codex&model=m1'
 );
 
 // previewUrl

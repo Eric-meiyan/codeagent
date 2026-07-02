@@ -560,7 +560,30 @@ export type NewTicketMessage = typeof ticketMessage.$inferInsert;
 // ─── Custom tables ───────────────────────────────────────────────────────────
 // Add your own tables below this line.
 
-// ─── Code Sessions ───────────────────────────────────────────────────────────
+// ─── Code Models & Sessions ──────────────────────────────────────────────────
+
+export const codeModel = table(
+  'code_model',
+  {
+    id: varchar191('id').primaryKey(),
+    agent: varchar('agent', { length: 32 }).notNull().default('claude'),
+    provider: varchar('provider', { length: 64 }).notNull().default('yunwu'),
+    model: varchar('model', { length: 191 }).notNull(),
+    label: varchar('label', { length: 191 }).notNull(),
+    baseUrl: varchar('base_url', { length: 255 }).notNull().default(''),
+    description: text('description'),
+    enabled: boolean('enabled').default(true).notNull(),
+    isDefault: boolean('is_default').default(false).notNull(),
+    sort: int('sort').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    index('idx_code_model_agent_enabled').on(t.agent, t.enabled),
+    index('idx_code_model_agent_default').on(t.agent, t.isDefault),
+    index('idx_code_model_agent_sort').on(t.agent, t.sort),
+  ]
+);
 
 export const codeSession = table(
   'code_session',
@@ -571,6 +594,7 @@ export const codeSession = table(
       .references(() => user.id, { onDelete: 'cascade' }),
     runtimeUserId: varchar191('runtime_user_id').notNull(),
     agent: varchar('agent', { length: 32 }).notNull().default('claude'),
+    model: varchar('model', { length: 191 }).notNull().default(''),
     status: varchar('status', { length: 50 }).notNull().default('active'),
     title: varchar('title', { length: 255 }).notNull().default(''),
     archiveKey: text('archive_key'),
@@ -588,3 +612,5 @@ export const codeSession = table(
 
 export type CodeSession = typeof codeSession.$inferSelect;
 export type NewCodeSession = typeof codeSession.$inferInsert;
+export type CodeModel = typeof codeModel.$inferSelect;
+export type NewCodeModel = typeof codeModel.$inferInsert;

@@ -35,11 +35,16 @@ function trimSlashes(base: string): string {
   return base.replace(/\/+$/, '');
 }
 
-function appendAgentParam(url: string, agent?: CodeSessionAgent): string {
+function appendSessionParams(
+  url: string,
+  agent?: CodeSessionAgent,
+  model?: string
+): string {
   const normalized = normalizeAgent(agent);
-  if (normalized === 'claude') return url;
+  if (normalized === 'claude' && !model) return url;
   const parsed = new URL(url);
-  parsed.searchParams.set('agent', normalized);
+  if (normalized !== 'claude') parsed.searchParams.set('agent', normalized);
+  if (model) parsed.searchParams.set('model', model);
   return parsed.toString();
 }
 
@@ -47,12 +52,14 @@ export function terminalWsUrl(
   base: string,
   userId: string,
   sessionId: string,
-  agent?: CodeSessionAgent
+  agent?: CodeSessionAgent,
+  model?: string
 ): string {
   const wsBase = trimSlashes(base).replace(/^http/, 'ws');
-  return appendAgentParam(
+  return appendSessionParams(
     `${wsBase}/terminal/${encodeURIComponent(userId)}/${encodeURIComponent(sessionId)}`,
-    agent
+    agent,
+    model
   );
 }
 
@@ -61,7 +68,8 @@ export function actionUrl(
   action: string,
   userId: string,
   sessionId?: string,
-  agent?: CodeSessionAgent
+  agent?: CodeSessionAgent,
+  model?: string
 ): string {
   const parts = [
     trimSlashes(base),
@@ -69,7 +77,7 @@ export function actionUrl(
     encodeURIComponent(userId),
   ];
   if (sessionId) parts.push(encodeURIComponent(sessionId));
-  return appendAgentParam(parts.join('/'), agent);
+  return appendSessionParams(parts.join('/'), agent, model);
 }
 
 export function previewUrl(

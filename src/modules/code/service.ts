@@ -8,6 +8,7 @@ import {
   type NewCodeSession,
 } from '@/config/db/schema';
 
+import { getEnabledCodeModel } from './models';
 import {
   actionUrl,
   generateSessionId,
@@ -22,6 +23,7 @@ export type { CodeSessionAgent };
 export interface CodeSessionView {
   id: string;
   agent: CodeSessionAgent;
+  model: string;
   runtimeUserId: string;
   status: CodeSessionStatus;
   title: string;
@@ -55,6 +57,7 @@ export function toView(row: CodeSession): CodeSessionView {
   return {
     id: row.id,
     agent: normalizeAgent(row.agent),
+    model: row.model || '',
     runtimeUserId: row.runtimeUserId,
     status: row.status as CodeSessionStatus,
     title: row.title,
@@ -99,7 +102,8 @@ export async function getOrCreateActiveSession(
 
 export async function createSession(
   userId: string,
-  agent?: unknown
+  agent?: unknown,
+  model?: unknown
 ): Promise<CodeSessionView> {
   const activeRows = await db()
     .select({ id: codeSession.id })
@@ -116,9 +120,11 @@ export async function createSession(
   const now = new Date();
   const runtimeUserId = sanitizeUserId(userId);
   const normalizedAgent = normalizeAgent(agent);
+  const selectedModel = await getEnabledCodeModel(normalizedAgent, model);
   const row: NewCodeSession = {
     id: generateSessionId(),
     agent: normalizedAgent,
+    model: selectedModel.model,
     userId,
     runtimeUserId,
     status: 'active',
@@ -220,7 +226,8 @@ async function runtimeJson(
   runtimeUserId: string,
   sessionId?: string,
   method: 'GET' | 'POST' = 'GET',
-  agent?: CodeSessionAgent
+  agent?: CodeSessionAgent,
+  model?: string
 ): Promise<RuntimeActionResult> {
   const res = await fetch(
     actionUrl(
@@ -228,7 +235,8 @@ async function runtimeJson(
       action,
       runtimeUserId,
       sessionId,
-      agent
+      agent,
+      model
     ),
     { method }
   );
@@ -253,7 +261,8 @@ export async function health(userId: string, sessionId: string) {
     row.runtimeUserId,
     sessionId,
     'GET',
-    normalizeAgent(row.agent)
+    normalizeAgent(row.agent),
+    row.model
   );
 }
 
@@ -267,7 +276,8 @@ export async function archiveSession(userId: string, sessionId: string) {
     row.runtimeUserId,
     sessionId,
     'GET',
-    normalizeAgent(row.agent)
+    normalizeAgent(row.agent),
+    row.model
   );
   const session = await recordArchive(userId, sessionId, archive);
 
@@ -284,7 +294,8 @@ export async function restoreSession(userId: string, sessionId: string) {
     row.runtimeUserId,
     sessionId,
     'POST',
-    normalizeAgent(row.agent)
+    normalizeAgent(row.agent),
+    row.model
   );
   const session = await touchSession(userId, sessionId);
 
@@ -304,7 +315,8 @@ export async function endSession(userId: string, sessionId: string) {
         row.runtimeUserId,
         sessionId,
         'GET',
-        normalizeAgent(row.agent)
+        normalizeAgent(row.agent),
+        row.model
       );
     } catch (error) {
       archiveError = (error as Error).message || 'Archive failed';
@@ -317,7 +329,8 @@ export async function endSession(userId: string, sessionId: string) {
       row.runtimeUserId,
       sessionId,
       'POST',
-      normalizeAgent(row.agent)
+      normalizeAgent(row.agent),
+      row.model
     );
     const session = await markSessionEnded(userId, sessionId, archive);
     return { session, archive, clear, archiveError };

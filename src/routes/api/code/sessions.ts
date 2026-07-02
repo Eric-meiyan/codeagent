@@ -33,7 +33,11 @@ async function POST({ request }: { request: Request }) {
     if (limited) return limited;
 
     const body = await request.json().catch(() => ({}));
-    const session = await codeSessions.createSession(user.id, body.agent);
+    const session = await codeSessions.createSession(
+      user.id,
+      body.agent,
+      body.model
+    );
     return respData(session);
   } catch (error: any) {
     return respErr(error.message || 'Failed to create code session');

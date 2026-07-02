@@ -16,6 +16,7 @@ interface Options {
   userId: string;
   sessionId: string | null;
   agent?: CodeSessionAgent;
+  model?: string;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -24,6 +25,7 @@ export function useTerminalSession({
   userId,
   sessionId,
   agent,
+  model,
   containerRef,
 }: Options): { status: TerminalStatus; reconnect: () => void } {
   const [status, setStatus] = useState<TerminalStatus>('idle');
@@ -89,7 +91,7 @@ export function useTerminalSession({
     }
     setStatus('connecting');
     const socket = new WebSocket(
-      terminalWsUrl(runtimeBase, userId, sessionId, agent)
+      terminalWsUrl(runtimeBase, userId, sessionId, agent, model)
     );
     socket.binaryType = 'arraybuffer';
     socketRef.current = socket;
@@ -118,7 +120,7 @@ export function useTerminalSession({
       if (socketRef.current !== socket) return;
       setStatus('error');
     });
-  }, [runtimeBase, userId, sessionId, agent, scheduleResizeBurst]);
+  }, [runtimeBase, userId, sessionId, agent, model, scheduleResizeBurst]);
 
   const reconnect = useCallback(() => connect(), [connect]);
 
