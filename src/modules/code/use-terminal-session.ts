@@ -190,7 +190,7 @@ export function useTerminalSession({
     textDecoderRef.current =
       typeof TextDecoder === 'undefined' ? null : new TextDecoder();
 
-    const openSocket = (index: number) => {
+    const openSocket = (index: number, targetStartedAt = Date.now()) => {
       const target = urls[index];
       if (!target) {
         setStatus('error');
@@ -207,32 +207,25 @@ export function useTerminalSession({
         return;
       }
       let opened = false;
-      let receivedMessage = false;
-      let firstMessageTimeout: number | undefined;
       socket.binaryType = 'arraybuffer';
       socketRef.current = socket;
 
       const clearConnectTimeout = () => {
         window.clearTimeout(connectTimeout);
-        if (firstMessageTimeout) {
-          window.clearTimeout(firstMessageTimeout);
-          firstMessageTimeout = undefined;
-        }
-      };
-      const fallbackToNext = () => {
-        if (socketRef.current !== socket) return;
-        clearConnectTimeout();
-        if (index >= urls.length - 1) {
-          setStatus('error');
-          return;
-        }
-        socketRef.current = null;
-        socket.close();
-        window.setTimeout(() => openSocket(index + 1), 0);
       };
       const fallback = () => {
         if (socketRef.current !== socket) return;
         clearConnectTimeout();
+        if (
+          !opened &&
+          target.mode === 'direct' &&
+          Date.now() - targetStartedAt < 120000
+        ) {
+          socketRef.current = null;
+          socket.close();
+          window.setTimeout(() => openSocket(index, targetStartedAt), 1500);
+          return;
+        }
         if (opened || index >= urls.length - 1) {
           setStatus('error');
           return;
@@ -243,14 +236,12 @@ export function useTerminalSession({
       };
       const writeIncoming = (chunk: string) => {
         if (socketRef.current !== socket || !chunk) return;
-        receivedMessage = true;
-        if (firstMessageTimeout) {
-          window.clearTimeout(firstMessageTimeout);
-          firstMessageTimeout = undefined;
-        }
         writeTerminal(chunk);
       };
-      const connectTimeout = window.setTimeout(fallback, 8000);
+      const connectTimeout = window.setTimeout(
+        fallback,
+        target.mode === 'direct' ? 120000 : 30000
+      );
 
       socket.addEventListener('open', () => {
         if (socketRef.current !== socket) return;
@@ -258,9 +249,6 @@ export function useTerminalSession({
         opened = true;
         setStatus('connected');
         scheduleResizeBurst(true);
-        firstMessageTimeout = window.setTimeout(() => {
-          if (!receivedMessage) fallbackToNext();
-        }, 3000);
         // xterm only emits onData (keystrokes) while its helper textarea holds
         // focus; focus on connect so the user can type without clicking first.
         termRef.current?.focus();

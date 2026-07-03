@@ -95,6 +95,8 @@ function CodeWorkspacePage() {
     sessions.find((session) => session.id === sessionId) ?? null;
   const currentAgent = currentSession?.agent ?? selectedAgent;
   const currentModel = currentSession?.model || selectedModel;
+  const currentRuntimeUserId =
+    currentSession?.runtimeUserId ?? loader.runtimeUserId;
   const availableModels = models.filter(
     (model) => model.agent === selectedAgent
   );
@@ -114,7 +116,7 @@ function CodeWorkspacePage() {
     sessionId,
     container: terminalElement,
     runtimeBase: loader.runtimeBase,
-    runtimeUserId: currentSession?.runtimeUserId ?? null,
+    runtimeUserId: currentRuntimeUserId ?? null,
     agent: currentAgent,
     model: currentModel,
   });
@@ -487,7 +489,7 @@ function CodeWorkspacePage() {
                     className="h-56 w-full"
                     src={`${previewUrl(
                       loader.runtimeBase,
-                      loader.runtimeUserId,
+                      currentRuntimeUserId,
                       sessionId
                     )}?t=${previewNonce}`}
                   />
