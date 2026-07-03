@@ -241,6 +241,12 @@ export function useTerminalSession({
         if (socketRef.current !== socket) return;
         if (typeof event.data === 'string') {
           writeTerminal(event.data);
+        } else if (event.data instanceof Blob) {
+          event.data.arrayBuffer().then((buffer) => {
+            if (socketRef.current === socket) {
+              writeTerminal(new Uint8Array(buffer));
+            }
+          });
         } else {
           writeTerminal(new Uint8Array(event.data as ArrayBuffer));
         }
