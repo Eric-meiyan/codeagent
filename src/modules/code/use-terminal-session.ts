@@ -11,7 +11,7 @@ export type TerminalStatus =
   | 'closed'
   | 'error';
 export type TerminalConnectionMode = 'none' | 'proxy' | 'direct';
-type TerminalChunk = string | Uint8Array;
+type TerminalChunk = string;
 
 interface Options {
   sessionId: string | null;
@@ -49,6 +49,7 @@ export function useTerminalSession({
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const resizeTimersRef = useRef<number[]>([]);
   const pendingOutputRef = useRef<TerminalChunk[]>([]);
+  const textDecoderRef = useRef<TextDecoder | null>(null);
 
   const flushPendingOutput = useCallback(() => {
     const term = termRef.current;
@@ -60,6 +61,7 @@ export function useTerminalSession({
 
   const writeTerminal = useCallback(
     (chunk: TerminalChunk) => {
+      if (!chunk) return;
       const term = termRef.current;
       if (!term) {
         pendingOutputRef.current.push(chunk);
@@ -70,6 +72,19 @@ export function useTerminalSession({
     },
     [flushPendingOutput]
   );
+
+  const decodeTerminalBytes = useCallback((bytes: Uint8Array) => {
+    if (bytes.byteLength === 0) return '';
+    if (typeof TextDecoder === 'undefined') {
+      let value = '';
+      for (let index = 0; index < bytes.byteLength; index += 1) {
+        value += String.fromCharCode(bytes[index]!);
+      }
+      return value;
+    }
+    textDecoderRef.current ??= new TextDecoder();
+    return textDecoderRef.current.decode(bytes, { stream: true });
+  }, []);
 
   const sessionTerminalUrls = useCallback(
     (id: string) => {
@@ -169,6 +184,8 @@ export function useTerminalSession({
       return;
     }
     const urls = sessionTerminalUrls(sessionId);
+    textDecoderRef.current =
+      typeof TextDecoder === 'undefined' ? null : new TextDecoder();
 
     const openSocket = (index: number) => {
       const target = urls[index];
@@ -221,6 +238,15 @@ export function useTerminalSession({
         socket.close();
         window.setTimeout(() => openSocket(index + 1), 0);
       };
+      const writeIncoming = (chunk: string) => {
+        if (socketRef.current !== socket || !chunk) return;
+        receivedMessage = true;
+        if (firstMessageTimeout) {
+          window.clearTimeout(firstMessageTimeout);
+          firstMessageTimeout = undefined;
+        }
+        writeTerminal(chunk);
+      };
       const connectTimeout = window.setTimeout(fallback, 8000);
 
       socket.addEventListener('open', () => {
@@ -238,21 +264,18 @@ export function useTerminalSession({
       });
       socket.addEventListener('message', (event) => {
         if (socketRef.current !== socket) return;
-        receivedMessage = true;
-        if (firstMessageTimeout) {
-          window.clearTimeout(firstMessageTimeout);
-          firstMessageTimeout = undefined;
-        }
         if (typeof event.data === 'string') {
-          writeTerminal(event.data);
+          writeIncoming(event.data);
         } else if (event.data instanceof Blob) {
           event.data.arrayBuffer().then((buffer) => {
             if (socketRef.current === socket) {
-              writeTerminal(new Uint8Array(buffer));
+              writeIncoming(decodeTerminalBytes(new Uint8Array(buffer)));
             }
           });
         } else {
-          writeTerminal(new Uint8Array(event.data as ArrayBuffer));
+          writeIncoming(
+            decodeTerminalBytes(new Uint8Array(event.data as ArrayBuffer))
+          );
         }
       });
       socket.addEventListener('close', () => {
@@ -268,14 +291,19 @@ export function useTerminalSession({
     };
 
     openSocket(0);
-  }, [sessionId, sessionTerminalUrls, scheduleResizeBurst, writeTerminal]);
+  }, [
+    decodeTerminalBytes,
+    sessionId,
+    sessionTerminalUrls,
+    scheduleResizeBurst,
+    writeTerminal,
+  ]);
 
   const reconnect = useCallback(() => {
     setMode('none');
     setStatus(sessionId ? 'connecting' : 'idle');
-    window.setTimeout(connect, 0);
     setConnectNonce((value) => value + 1);
-  }, [connect, sessionId]);
+  }, [sessionId]);
 
   useEffect(() => {
     let disposed = false;
