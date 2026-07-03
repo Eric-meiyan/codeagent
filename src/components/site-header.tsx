@@ -35,9 +35,9 @@ export function SiteHeader({ navLinks }: { navLinks?: NavLink[] }) {
 
   return (
     <header className="bg-background/80 sticky top-0 z-50 w-full backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto grid h-16 max-w-6xl grid-cols-[1fr_auto_1fr] items-center px-4 sm:px-6">
         {/* Brand */}
-        <Link href="/" className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5 justify-self-start">
           <img
             src={envConfigs.app_logo}
             alt=""
@@ -49,7 +49,7 @@ export function SiteHeader({ navLinks }: { navLinks?: NavLink[] }) {
         </Link>
 
         {/* Desktop nav */}
-        <nav className="hidden items-center gap-6 md:flex">
+        <nav className="hidden items-center gap-6 justify-self-center md:flex">
           {navLinks?.map((link) =>
             isExternalHref(link.href) ? (
               <a
@@ -75,7 +75,7 @@ export function SiteHeader({ navLinks }: { navLinks?: NavLink[] }) {
         </nav>
 
         {/* Desktop actions */}
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden items-center gap-3 justify-self-end md:flex">
           <LocaleSelector />
           <ThemeToggle />
           {user ? (
@@ -94,7 +94,7 @@ export function SiteHeader({ navLinks }: { navLinks?: NavLink[] }) {
 
         {/* Mobile toggle */}
         <button
-          className="p-2 md:hidden"
+          className="justify-self-end p-2 md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
           aria-expanded={mobileOpen}
