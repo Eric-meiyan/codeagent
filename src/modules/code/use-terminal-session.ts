@@ -308,6 +308,7 @@ export function useTerminalSession({
   useEffect(() => {
     let disposed = false;
     let removeWindowResize: (() => void) | null = null;
+    let removeTerminalFocusListeners: (() => void) | null = null;
     if (!container) return;
     setTerminalReady(false);
     setStatus(sessionId ? 'connecting' : 'idle');
@@ -360,8 +361,16 @@ export function useTerminalSession({
         term.onData((data) => {
           sendInput(data);
         });
-        term.onFocus(() => setFocused(true));
-        term.onBlur(() => setFocused(false));
+        if (term.element) {
+          const onFocusIn = () => setFocused(true);
+          const onFocusOut = () => setFocused(false);
+          term.element.addEventListener('focusin', onFocusIn);
+          term.element.addEventListener('focusout', onFocusOut);
+          removeTerminalFocusListeners = () => {
+            term.element?.removeEventListener('focusin', onFocusIn);
+            term.element?.removeEventListener('focusout', onFocusOut);
+          };
+        }
 
         flushPendingOutput();
         scheduleResizeBurst();
@@ -405,6 +414,7 @@ export function useTerminalSession({
     return () => {
       disposed = true;
       setTerminalReady(false);
+      removeTerminalFocusListeners?.();
       removeWindowResize?.();
       resizeTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       resizeTimersRef.current = [];
