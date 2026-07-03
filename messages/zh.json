@@ -758,7 +758,7 @@
   "admin.tickets.created_col": "创建时间",
   "landing.nav.features": "功能",
   "landing.nav.pricing": "价格",
-  "landing.hero.headline": "hicode，让头部代码 Agent 在线开箱即用。",
+  "landing.hero.headline": "hicode，让 Claude Code 和 Codex 在浏览器里开箱即用。",
   "landing.hero.subheadline": "在浏览器终端中启动 Claude Code 或 Codex，配套云工作区、文件编辑、实时预览、模型网关和可恢复会话。",
   "landing.hero.cta": "启动 hicode",
   "landing.hero.secondary": "价格",
