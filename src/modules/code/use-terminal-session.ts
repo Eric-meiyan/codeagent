@@ -2,21 +2,36 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
+import { terminalWsUrl, type CodeSessionAgent } from '@/modules/code/runtime';
+
 export type TerminalStatus =
   | 'idle'
   | 'connecting'
   | 'connected'
   | 'closed'
   | 'error';
+export type TerminalConnectionMode = 'none' | 'proxy' | 'direct';
 
 interface Options {
   sessionId: string | null;
   container: HTMLDivElement | null;
+  runtimeBase?: string;
+  runtimeUserId?: string | null;
+  agent?: CodeSessionAgent;
+  model?: string;
 }
 
-export function useTerminalSession({ sessionId, container }: Options): {
+export function useTerminalSession({
+  sessionId,
+  container,
+  runtimeBase,
+  runtimeUserId,
+  agent,
+  model,
+}: Options): {
   status: TerminalStatus;
   focused: boolean;
+  mode: TerminalConnectionMode;
   reconnect: () => void;
   focus: () => void;
   scrollToBottom: () => void;
@@ -24,6 +39,7 @@ export function useTerminalSession({ sessionId, container }: Options): {
 } {
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [focused, setFocused] = useState(false);
+  const [mode, setMode] = useState<TerminalConnectionMode>('none');
   const [terminalReady, setTerminalReady] = useState(false);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -31,14 +47,27 @@ export function useTerminalSession({ sessionId, container }: Options): {
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const resizeTimersRef = useRef<number[]>([]);
 
-  const sessionTerminalUrl = useCallback((id: string) => {
-    const url = new URL(
-      `/api/code/sessions/${encodeURIComponent(id)}/terminal`,
-      window.location.href
-    );
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    return url.toString();
-  }, []);
+  const sessionTerminalUrls = useCallback(
+    (id: string) => {
+      const proxy = new URL(
+        `/api/code/sessions/${encodeURIComponent(id)}/terminal`,
+        window.location.href
+      );
+      proxy.protocol = proxy.protocol === 'https:' ? 'wss:' : 'ws:';
+
+      const urls: Array<{ mode: TerminalConnectionMode; url: string }> = [
+        { mode: 'proxy', url: proxy.toString() },
+      ];
+      if (runtimeBase && runtimeUserId) {
+        urls.push({
+          mode: 'direct',
+          url: terminalWsUrl(runtimeBase, runtimeUserId, id, agent, model),
+        });
+      }
+      return urls;
+    },
+    [agent, model, runtimeBase, runtimeUserId]
+  );
 
   const sendResize = useCallback((redraw = false) => {
     const term = termRef.current;
@@ -133,40 +162,67 @@ export function useTerminalSession({ sessionId, container }: Options): {
     }
     if (!sessionId) {
       term.clear();
+      setMode('none');
       setStatus('idle');
       return;
     }
-    setStatus('connecting');
-    const socket = new WebSocket(sessionTerminalUrl(sessionId));
-    socket.binaryType = 'arraybuffer';
-    socketRef.current = socket;
+    const urls = sessionTerminalUrls(sessionId);
 
-    socket.addEventListener('open', () => {
-      if (socketRef.current !== socket) return;
-      setStatus('connected');
-      scheduleResizeBurst(true);
-      configureTmux();
-      // xterm only emits onData (keystrokes) while its helper textarea holds
-      // focus; focus on connect so the user can type without clicking first.
-      term.focus();
-    });
-    socket.addEventListener('message', (event) => {
-      if (socketRef.current !== socket) return;
-      if (typeof event.data === 'string') {
-        term.write(event.data);
-      } else {
-        term.write(new Uint8Array(event.data as ArrayBuffer));
+    const openSocket = (index: number) => {
+      const target = urls[index];
+      if (!target) {
+        setStatus('error');
+        return;
       }
-    });
-    socket.addEventListener('close', () => {
-      if (socketRef.current !== socket) return;
-      setStatus('closed');
-    });
-    socket.addEventListener('error', () => {
-      if (socketRef.current !== socket) return;
-      setStatus('error');
-    });
-  }, [sessionId, sessionTerminalUrl, scheduleResizeBurst, configureTmux]);
+
+      setMode(target.mode);
+      setStatus('connecting');
+      const socket = new WebSocket(target.url);
+      let opened = false;
+      socket.binaryType = 'arraybuffer';
+      socketRef.current = socket;
+
+      const fallback = () => {
+        if (socketRef.current !== socket) return;
+        if (opened || index >= urls.length - 1) {
+          setStatus('error');
+          return;
+        }
+        socketRef.current = null;
+        window.setTimeout(() => openSocket(index + 1), 0);
+      };
+
+      socket.addEventListener('open', () => {
+        if (socketRef.current !== socket) return;
+        opened = true;
+        setStatus('connected');
+        scheduleResizeBurst(true);
+        configureTmux();
+        // xterm only emits onData (keystrokes) while its helper textarea holds
+        // focus; focus on connect so the user can type without clicking first.
+        term.focus();
+      });
+      socket.addEventListener('message', (event) => {
+        if (socketRef.current !== socket) return;
+        if (typeof event.data === 'string') {
+          term.write(event.data);
+        } else {
+          term.write(new Uint8Array(event.data as ArrayBuffer));
+        }
+      });
+      socket.addEventListener('close', () => {
+        if (socketRef.current !== socket) return;
+        if (!opened && index < urls.length - 1) {
+          fallback();
+          return;
+        }
+        setStatus('closed');
+      });
+      socket.addEventListener('error', fallback);
+    };
+
+    openSocket(0);
+  }, [sessionId, sessionTerminalUrls, scheduleResizeBurst, configureTmux]);
 
   const reconnect = useCallback(() => connect(), [connect]);
 
@@ -261,5 +317,13 @@ export function useTerminalSession({ sessionId, container }: Options): {
     connect();
   }, [terminalReady, connect]);
 
-  return { status, focused, reconnect, focus, scrollToBottom, enterScrollback };
+  return {
+    status,
+    focused,
+    mode,
+    reconnect,
+    focus,
+    scrollToBottom,
+    enterScrollback,
+  };
 }

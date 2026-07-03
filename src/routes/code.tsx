@@ -104,6 +104,7 @@ function CodeWorkspacePage() {
   const {
     status,
     focused,
+    mode,
     reconnect,
     focus: focusTerminal,
     scrollToBottom,
@@ -111,6 +112,10 @@ function CodeWorkspacePage() {
   } = useTerminalSession({
     sessionId,
     container: terminalElement,
+    runtimeBase: loader.runtimeBase,
+    runtimeUserId: currentSession?.runtimeUserId ?? null,
+    agent: currentAgent,
+    model: currentModel,
   });
 
   const newSession = async () => {
@@ -373,6 +378,7 @@ function CodeWorkspacePage() {
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-xs">
                   {statusLabel(status)}
+                  {mode !== 'none' ? ` · ${mode}` : ''}
                 </span>
                 <span
                   className={cn(
