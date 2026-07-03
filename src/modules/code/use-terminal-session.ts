@@ -80,13 +80,13 @@ export function useTerminalSession({
       proxy.protocol = proxy.protocol === 'https:' ? 'wss:' : 'ws:';
 
       const urls: Array<{ mode: TerminalConnectionMode; url: string }> = [];
+      urls.push({ mode: 'proxy', url: proxy.toString() });
       if (runtimeBase && runtimeUserId) {
         urls.push({
           mode: 'direct',
           url: terminalWsUrl(runtimeBase, runtimeUserId, id, agent, model),
         });
       }
-      urls.push({ mode: 'proxy', url: proxy.toString() });
       return urls;
     },
     [agent, model, runtimeBase, runtimeUserId]
@@ -156,26 +156,6 @@ export function useTerminalSession({
     termRef.current?.focus();
   }, [sendInput]);
 
-  const configureTmux = useCallback(() => {
-    // These are tmux commands, sent via the default Ctrl-B prefix. They make
-    // mouse-wheel scrolling work in copy-mode and stop stale tiny clients from
-    // pinning the session to an old row count.
-    ['set -g mouse on', 'set -g aggressive-resize on'].forEach(
-      (command, index) => {
-        const timer = window.setTimeout(
-          () => {
-            resizeTimersRef.current = resizeTimersRef.current.filter(
-              (item) => item !== timer
-            );
-            sendInput(`\x02:${command}\r`);
-          },
-          120 + index * 120
-        );
-        resizeTimersRef.current.push(timer);
-      }
-    );
-  }, [sendInput]);
-
   const connect = useCallback(() => {
     if (socketRef.current) {
       socketRef.current.close();
@@ -207,11 +187,28 @@ export function useTerminalSession({
         return;
       }
       let opened = false;
+      let receivedMessage = false;
+      let firstMessageTimeout: number | undefined;
       socket.binaryType = 'arraybuffer';
       socketRef.current = socket;
 
       const clearConnectTimeout = () => {
         window.clearTimeout(connectTimeout);
+        if (firstMessageTimeout) {
+          window.clearTimeout(firstMessageTimeout);
+          firstMessageTimeout = undefined;
+        }
+      };
+      const fallbackToNext = () => {
+        if (socketRef.current !== socket) return;
+        clearConnectTimeout();
+        if (index >= urls.length - 1) {
+          setStatus('error');
+          return;
+        }
+        socketRef.current = null;
+        socket.close();
+        window.setTimeout(() => openSocket(index + 1), 0);
       };
       const fallback = () => {
         if (socketRef.current !== socket) return;
@@ -232,13 +229,20 @@ export function useTerminalSession({
         opened = true;
         setStatus('connected');
         scheduleResizeBurst(true);
-        configureTmux();
+        firstMessageTimeout = window.setTimeout(() => {
+          if (!receivedMessage) fallbackToNext();
+        }, 3000);
         // xterm only emits onData (keystrokes) while its helper textarea holds
         // focus; focus on connect so the user can type without clicking first.
         termRef.current?.focus();
       });
       socket.addEventListener('message', (event) => {
         if (socketRef.current !== socket) return;
+        receivedMessage = true;
+        if (firstMessageTimeout) {
+          window.clearTimeout(firstMessageTimeout);
+          firstMessageTimeout = undefined;
+        }
         if (typeof event.data === 'string') {
           writeTerminal(event.data);
         } else if (event.data instanceof Blob) {
@@ -264,13 +268,7 @@ export function useTerminalSession({
     };
 
     openSocket(0);
-  }, [
-    sessionId,
-    sessionTerminalUrls,
-    scheduleResizeBurst,
-    configureTmux,
-    writeTerminal,
-  ]);
+  }, [sessionId, sessionTerminalUrls, scheduleResizeBurst, writeTerminal]);
 
   const reconnect = useCallback(() => {
     setMode('none');
