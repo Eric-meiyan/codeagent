@@ -27,8 +27,16 @@ export function useTerminalSession({
   agent,
   model,
   containerRef,
-}: Options): { status: TerminalStatus; reconnect: () => void } {
+}: Options): {
+  status: TerminalStatus;
+  focused: boolean;
+  reconnect: () => void;
+  focus: () => void;
+  scrollToBottom: () => void;
+  enterScrollback: () => void;
+} {
   const [status, setStatus] = useState<TerminalStatus>('idle');
+  const [focused, setFocused] = useState(false);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -77,6 +85,48 @@ export function useTerminalSession({
     [queueResize]
   );
 
+  const sendInput = useCallback((data: string) => {
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'input', data }));
+    }
+  }, []);
+
+  const focus = useCallback(() => {
+    termRef.current?.focus();
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    termRef.current?.scrollToBottom();
+    termRef.current?.focus();
+  }, []);
+
+  const enterScrollback = useCallback(() => {
+    // tmux copy-mode is the reliable scrollback path for full-screen TUIs.
+    sendInput('\x02[');
+    termRef.current?.focus();
+  }, [sendInput]);
+
+  const configureTmux = useCallback(() => {
+    // These are tmux commands, sent via the default Ctrl-B prefix. They make
+    // mouse-wheel scrolling work in copy-mode and stop stale tiny clients from
+    // pinning the session to an old row count.
+    ['set -g mouse on', 'set -g aggressive-resize on'].forEach(
+      (command, index) => {
+        const timer = window.setTimeout(
+          () => {
+            resizeTimersRef.current = resizeTimersRef.current.filter(
+              (item) => item !== timer
+            );
+            sendInput(`\x02:${command}\r`);
+          },
+          120 + index * 120
+        );
+        resizeTimersRef.current.push(timer);
+      }
+    );
+  }, [sendInput]);
+
   const connect = useCallback(() => {
     const term = termRef.current;
     if (!term) return;
@@ -100,6 +150,7 @@ export function useTerminalSession({
       if (socketRef.current !== socket) return;
       setStatus('connected');
       scheduleResizeBurst(true);
+      configureTmux();
       // xterm only emits onData (keystrokes) while its helper textarea holds
       // focus; focus on connect so the user can type without clicking first.
       term.focus();
@@ -120,7 +171,15 @@ export function useTerminalSession({
       if (socketRef.current !== socket) return;
       setStatus('error');
     });
-  }, [runtimeBase, userId, sessionId, agent, model, scheduleResizeBurst]);
+  }, [
+    runtimeBase,
+    userId,
+    sessionId,
+    agent,
+    model,
+    scheduleResizeBurst,
+    configureTmux,
+  ]);
 
   const reconnect = useCallback(() => connect(), [connect]);
 
@@ -139,6 +198,8 @@ export function useTerminalSession({
 
       const term = new Terminal({
         cursorBlink: true,
+        cursorStyle: 'block',
+        cursorInactiveStyle: 'outline',
         convertEol: false,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
         fontSize: 12,
@@ -157,11 +218,10 @@ export function useTerminalSession({
       fit.fit();
       term.focus();
       term.onData((data) => {
-        const socket = socketRef.current;
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'input', data }));
-        }
+        sendInput(data);
       });
+      term.onFocus(() => setFocused(true));
+      term.onBlur(() => setFocused(false));
 
       termRef.current = term;
       fitRef.current = fit;
@@ -201,7 +261,7 @@ export function useTerminalSession({
       fitRef.current = null;
     };
     // Re-init on session change so "new session" starts a fresh terminal.
-  }, [sessionId, agent, connect, scheduleResizeBurst, containerRef]);
+  }, [sessionId, agent, connect, scheduleResizeBurst, containerRef, sendInput]);
 
-  return { status, reconnect };
+  return { status, focused, reconnect, focus, scrollToBottom, enterScrollback };
 }

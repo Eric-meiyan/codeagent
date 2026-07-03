@@ -3,9 +3,12 @@ import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import {
   Archive,
+  ArrowDownToLine,
   Bot,
   Cloud,
   FileDiff,
+  Focus,
+  History,
   Play,
   Plus,
   Square,
@@ -95,7 +98,14 @@ function CodeWorkspacePage() {
   const hasSession = Boolean(sessionId);
   const controlsDisabled = !hasSession || Boolean(busyAction);
 
-  const { status, reconnect } = useTerminalSession({
+  const {
+    status,
+    focused,
+    reconnect,
+    focus: focusTerminal,
+    scrollToBottom,
+    enterScrollback,
+  } = useTerminalSession({
     runtimeBase: loader.runtimeBase,
     userId: loader.runtimeUserId,
     sessionId,
@@ -365,6 +375,49 @@ function CodeWorkspacePage() {
                 <span className="text-muted-foreground text-xs">
                   {statusLabel(status)}
                 </span>
+                <span
+                  className={cn(
+                    'hidden text-xs sm:inline',
+                    focused ? 'text-primary' : 'text-muted-foreground'
+                  )}
+                >
+                  {focused
+                    ? m['code.terminal.focused']()
+                    : m['code.terminal.unfocused']()}
+                </span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 rounded-full"
+                  disabled={!sessionId}
+                  aria-label={m['code.terminal.focus']()}
+                  title={m['code.terminal.focus']()}
+                  onClick={focusTerminal}
+                >
+                  <Focus className="size-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 rounded-full"
+                  disabled={!sessionId}
+                  aria-label={m['code.terminal.scrollback']()}
+                  title={m['code.terminal.scrollback']()}
+                  onClick={enterScrollback}
+                >
+                  <History className="size-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 rounded-full"
+                  disabled={!sessionId}
+                  aria-label={m['code.terminal.bottom']()}
+                  title={m['code.terminal.bottom']()}
+                  onClick={scrollToBottom}
+                >
+                  <ArrowDownToLine className="size-3.5" />
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -376,8 +429,17 @@ function CodeWorkspacePage() {
                 </Button>
               </div>
             </div>
-            <div className="relative h-[calc(100vh-12rem)] min-h-[620px] overflow-hidden bg-[#17130f] p-3 lg:min-h-[720px]">
-              <div ref={terminalRef} className="h-full min-h-0 w-full" />
+            <div
+              className={cn(
+                'relative h-[calc(100vh-12rem)] min-h-[620px] overflow-hidden bg-[#17130f] p-3 ring-2 ring-transparent transition-shadow lg:min-h-[720px]',
+                focused && 'ring-primary/30'
+              )}
+              onClick={focusTerminal}
+            >
+              <div
+                ref={terminalRef}
+                className="h-full min-h-0 w-full cursor-text"
+              />
               {!sessionId && (
                 <div className="absolute inset-0 flex items-center justify-center bg-[#17130f] px-6 text-center text-sm text-[#f4eadf]/70">
                   {m['code.sessions.empty']()}
