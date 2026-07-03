@@ -95,13 +95,13 @@ export function useTerminalSession({
       proxy.protocol = proxy.protocol === 'https:' ? 'wss:' : 'ws:';
 
       const urls: Array<{ mode: TerminalConnectionMode; url: string }> = [];
-      urls.push({ mode: 'proxy', url: proxy.toString() });
       if (runtimeBase && runtimeUserId) {
         urls.push({
           mode: 'direct',
           url: terminalWsUrl(runtimeBase, runtimeUserId, id, agent, model),
         });
       }
+      urls.push({ mode: 'proxy', url: proxy.toString() });
       return urls;
     },
     [agent, model, runtimeBase, runtimeUserId]
