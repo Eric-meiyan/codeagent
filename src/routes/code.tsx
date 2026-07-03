@@ -84,6 +84,7 @@ function CodeWorkspacePage() {
     initialSession?.model || defaultModelFor(models, initialAgent)?.model || ''
   );
   const [actionMsg, setActionMsg] = useState<string>('');
+  const [newSessionMsg, setNewSessionMsg] = useState<string>('');
   const [busyAction, setBusyAction] = useState<string>('');
   const [previewNonce, setPreviewNonce] = useState(0);
   const [terminalElement, setTerminalElement] = useState<HTMLDivElement | null>(
@@ -120,11 +121,11 @@ function CodeWorkspacePage() {
 
   const newSession = async () => {
     if (!canCreateSession) {
-      setActionMsg(m['code.model.configure_required']());
+      setNewSessionMsg(m['code.model.configure_required']());
       return;
     }
     setBusyAction('new');
-    setActionMsg(m['code.actions.running']());
+    setNewSessionMsg(m['code.actions.running']());
     try {
       const idsToEnd = sessionId ? [sessionId] : sessions.map((s) => s.id);
       const cleanupErrors: string[] = [];
@@ -146,13 +147,13 @@ function CodeWorkspacePage() {
       setSelectedModel(session.model);
       setPreviewNonce(Date.now());
       const message = `${m['code.actions.started']()}: ${shortId(session.id)}`;
-      setActionMsg(
+      setNewSessionMsg(
         cleanupErrors.length
           ? `${message} - ${m['code.actions.cleanup_warning']()}`
           : message
       );
     } catch (err) {
-      setActionMsg((err as Error).message || 'error');
+      setNewSessionMsg((err as Error).message || 'error');
     } finally {
       setBusyAction('');
     }
@@ -291,6 +292,15 @@ function CodeWorkspacePage() {
               </p>
             )}
           </div>
+
+          {newSessionMsg && (
+            <p
+              aria-live="polite"
+              className="text-muted-foreground mt-3 rounded-md border border-dashed px-3 py-2 text-xs leading-5"
+            >
+              {newSessionMsg}
+            </p>
+          )}
 
           <div className="mt-6 space-y-2">
             {sessions.length === 0 && (

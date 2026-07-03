@@ -23,6 +23,10 @@ export enum CreditTransactionScene {
   RENEWAL = 'renewal',
   GIFT = 'gift',
   REWARD = 'reward',
+  CODE_MODEL = 'code_model',
+  CODE_RUNTIME = 'code_runtime',
+  CODE_STORAGE = 'code_storage',
+  CODE_NETWORK = 'code_network',
 }
 
 type NewCredit = typeof credit.$inferInsert;
@@ -263,13 +267,13 @@ export async function grantForNewUser(params: {
 }) {
   const { userId, userEmail, configs } = params;
 
-  if (configs.initial_credits_enabled !== 'true') return;
+  if ((configs.initial_credits_enabled ?? 'true') === 'false') return;
 
-  const credits = parseInt(configs.initial_credits_amount) || 0;
+  const credits = parseInt(configs.initial_credits_amount || '1000') || 0;
   if (credits <= 0) return;
 
-  const validDays = parseInt(configs.initial_credits_valid_days) || 0;
-  const description = configs.initial_credits_description || 'Initial credits';
+  const validDays = parseInt(configs.initial_credits_valid_days || '365') || 0;
+  const description = configs.initial_credits_description || 'Trial credits';
 
   const expiresAt = calculateCreditExpirationTime({
     creditsValidDays: validDays,

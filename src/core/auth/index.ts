@@ -10,6 +10,7 @@ import { VerifyEmail } from '@/core/email/templates/verify-email';
 import { AUTH_SECRET_PLACEHOLDER, envConfigs } from '@/config';
 import * as schema from '@/config/db/schema';
 import { getAllConfigs } from '@/modules/config/service';
+import { grantForNewUser } from '@/modules/credits/service';
 import { getUuid } from '@/lib/hash';
 
 function assertProductionAuthSecret() {
@@ -202,6 +203,24 @@ export function getAuth(configs?: Record<string, string>) {
       provider: getDatabaseProvider(envConfigs.database_provider),
       schema,
     }),
+    databaseHooks: {
+      user: {
+        create: {
+          async after(user) {
+            try {
+              if (!user?.id) return;
+              await grantForNewUser({
+                userId: user.id,
+                userEmail: user.email,
+                configs: await getAllConfigs(),
+              });
+            } catch (error) {
+              console.error('[auth] grant initial credits failed:', error);
+            }
+          },
+        },
+      },
+    },
     socialProviders,
     plugins: getAuthPlugins(configs),
     user: {

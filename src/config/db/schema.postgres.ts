@@ -604,6 +604,18 @@ export const codeModel = table(
     label: text('label').notNull(),
     baseUrl: text('base_url').notNull().default(''),
     description: text('description').notNull().default(''),
+    inputTokenCostCreditsPer1m: integer('input_token_cost_credits_per_1m')
+      .notNull()
+      .default(0),
+    outputTokenCostCreditsPer1m: integer('output_token_cost_credits_per_1m')
+      .notNull()
+      .default(0),
+    cachedInputTokenCostCreditsPer1m: integer(
+      'cached_input_token_cost_credits_per_1m'
+    )
+      .notNull()
+      .default(0),
+    billingMultiplier: integer('billing_multiplier').notNull().default(200),
     enabled: boolean('enabled').default(true).notNull(),
     isDefault: boolean('is_default').default(false).notNull(),
     sort: integer('sort').default(0).notNull(),
@@ -634,6 +646,8 @@ export const codeSession = table(
     title: text('title').notNull().default(''),
     archiveKey: text('archive_key'),
     archiveDigest: text('archive_digest'),
+    lastBilledAt: timestamp('last_billed_at'),
+    billedCredits: integer('billed_credits').default(0).notNull(),
     lastActiveAt: timestamp('last_active_at').defaultNow().notNull(),
     endedAt: timestamp('ended_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -645,6 +659,38 @@ export const codeSession = table(
   (t) => [
     index('idx_code_session_user_status').on(t.userId, t.status),
     index('idx_code_session_user_last_active').on(t.userId, t.lastActiveAt),
+  ]
+);
+
+export const codeBillingEvent = table(
+  'code_billing_event',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    sessionId: text('session_id'),
+    agent: text('agent').notNull().default('claude'),
+    model: text('model').notNull().default(''),
+    eventType: text('event_type').notNull(),
+    runtimeState: text('runtime_state').notNull().default(''),
+    inputTokens: integer('input_tokens').default(0).notNull(),
+    outputTokens: integer('output_tokens').default(0).notNull(),
+    cachedInputTokens: integer('cached_input_tokens').default(0).notNull(),
+    durationSeconds: integer('duration_seconds').default(0).notNull(),
+    rawCostCredits: integer('raw_cost_credits').default(0).notNull(),
+    chargedCredits: integer('charged_credits').default(0).notNull(),
+    billingMultiplier: integer('billing_multiplier').default(200).notNull(),
+    creditId: text('credit_id'),
+    status: text('status').notNull().default('charged'),
+    description: text('description').notNull().default(''),
+    metadata: text('metadata').notNull().default(''),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [
+    index('idx_code_billing_event_user_created').on(t.userId, t.createdAt),
+    index('idx_code_billing_event_session').on(t.sessionId),
+    index('idx_code_billing_event_type').on(t.eventType),
   ]
 );
 
@@ -689,6 +735,8 @@ export type CodeSession = typeof codeSession.$inferSelect;
 export type NewCodeSession = typeof codeSession.$inferInsert;
 export type CodeModel = typeof codeModel.$inferSelect;
 export type NewCodeModel = typeof codeModel.$inferInsert;
+export type CodeBillingEvent = typeof codeBillingEvent.$inferSelect;
+export type NewCodeBillingEvent = typeof codeBillingEvent.$inferInsert;
 export type InviteCode = typeof inviteCode.$inferSelect;
 export type NewInviteCode = typeof inviteCode.$inferInsert;
 export type UserInvite = typeof userInvite.$inferSelect;

@@ -22,6 +22,10 @@ export interface CodeModelView {
   label: string;
   baseUrl: string;
   description: string;
+  inputTokenCostCreditsPer1m: number;
+  outputTokenCostCreditsPer1m: number;
+  cachedInputTokenCostCreditsPer1m: number;
+  billingMultiplier: number;
   enabled: boolean;
   isDefault: boolean;
   sort: number;
@@ -41,6 +45,10 @@ export interface CodeModelInput {
   label?: unknown;
   baseUrl?: unknown;
   description?: unknown;
+  inputTokenCostCreditsPer1m?: unknown;
+  outputTokenCostCreditsPer1m?: unknown;
+  cachedInputTokenCostCreditsPer1m?: unknown;
+  billingMultiplier?: unknown;
   enabled?: unknown;
   isDefault?: unknown;
   sort?: unknown;
@@ -53,6 +61,10 @@ type NormalizedCodeModelInput = {
   label: string;
   baseUrl: string;
   description: string;
+  inputTokenCostCreditsPer1m: number;
+  outputTokenCostCreditsPer1m: number;
+  cachedInputTokenCostCreditsPer1m: number;
+  billingMultiplier: number;
   enabled: boolean;
   isDefault: boolean;
   sort: number;
@@ -73,6 +85,12 @@ export function toCodeModelView(row: CodeModel): CodeModelView {
     label: row.label || row.model,
     baseUrl: row.baseUrl || defaultBaseUrl(normalizeAgent(row.agent)),
     description: row.description || '',
+    inputTokenCostCreditsPer1m: Number(row.inputTokenCostCreditsPer1m || 0),
+    outputTokenCostCreditsPer1m: Number(row.outputTokenCostCreditsPer1m || 0),
+    cachedInputTokenCostCreditsPer1m: Number(
+      row.cachedInputTokenCostCreditsPer1m || 0
+    ),
+    billingMultiplier: Number(row.billingMultiplier || 200),
     enabled: Boolean(row.enabled),
     isDefault: Boolean(row.isDefault),
     sort: Number(row.sort || 0),
@@ -211,6 +229,15 @@ export async function updateCodeModel(id: string, input: CodeModelInput) {
       label: input.label ?? existing.label,
       baseUrl: input.baseUrl ?? existing.baseUrl,
       description: input.description ?? existing.description,
+      inputTokenCostCreditsPer1m:
+        input.inputTokenCostCreditsPer1m ?? existing.inputTokenCostCreditsPer1m,
+      outputTokenCostCreditsPer1m:
+        input.outputTokenCostCreditsPer1m ??
+        existing.outputTokenCostCreditsPer1m,
+      cachedInputTokenCostCreditsPer1m:
+        input.cachedInputTokenCostCreditsPer1m ??
+        existing.cachedInputTokenCostCreditsPer1m,
+      billingMultiplier: input.billingMultiplier ?? existing.billingMultiplier,
       enabled: input.enabled ?? existing.enabled,
       isDefault: input.isDefault ?? existing.isDefault,
       sort: input.sort ?? existing.sort,
@@ -300,6 +327,16 @@ function normalizeInput(
     label: textValue(input.label) || model,
     baseUrl: textValue(input.baseUrl) || defaultBaseUrl(agent),
     description: textValue(input.description),
+    inputTokenCostCreditsPer1m: nonNegativeNumberValue(
+      input.inputTokenCostCreditsPer1m
+    ),
+    outputTokenCostCreditsPer1m: nonNegativeNumberValue(
+      input.outputTokenCostCreditsPer1m
+    ),
+    cachedInputTokenCostCreditsPer1m: nonNegativeNumberValue(
+      input.cachedInputTokenCostCreditsPer1m
+    ),
+    billingMultiplier: positiveNumberValue(input.billingMultiplier, 200),
     enabled: input.enabled !== false,
     isDefault: input.isDefault === true,
     sort: numberValue(input.sort),
@@ -316,6 +353,22 @@ function numberValue(value: unknown) {
       ? value
       : Number.parseInt(typeof value === 'string' ? value : '0', 10);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nonNegativeNumberValue(value: unknown) {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : Number.parseInt(typeof value === 'string' ? value : '0', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function positiveNumberValue(value: unknown, fallback: number) {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : Number.parseInt(typeof value === 'string' ? value : '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
 function defaultBaseUrl(agent: CodeSessionAgent) {

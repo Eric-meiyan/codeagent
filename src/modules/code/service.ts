@@ -7,7 +7,14 @@ import {
   type CodeSession,
   type NewCodeSession,
 } from '@/config/db/schema';
+import { getAllConfigs } from '@/modules/config/service';
+import {
+  getBalance,
+  getHistory,
+  grantForNewUser,
+} from '@/modules/credits/service';
 
+import { getCodeBillingSettings, settleSessionRuntimeUsage } from './billing';
 import { getEnabledCodeModel } from './models';
 import {
   actionUrl,
@@ -109,6 +116,8 @@ export async function createSession(
   agent?: unknown,
   model?: unknown
 ): Promise<CodeSessionView> {
+  await ensureCanStartBillableSession(userId);
+
   const activeRows = await db()
     .select({ id: codeSession.id })
     .from(codeSession)
@@ -179,9 +188,10 @@ async function markSessionError(userId: string, sessionId: string) {
 async function markSessionEnded(
   userId: string,
   sessionId: string,
-  archive?: RuntimeActionResult | null
+  archive?: RuntimeActionResult | null,
+  endedAt?: Date
 ): Promise<CodeSessionView> {
-  const now = new Date();
+  const now = endedAt || new Date();
   await db()
     .update(codeSession)
     .set({
@@ -336,10 +346,42 @@ export async function endSession(userId: string, sessionId: string) {
       normalizeAgent(row.agent),
       row.model
     );
-    const session = await markSessionEnded(userId, sessionId, archive);
-    return { session, archive, clear, archiveError };
+    const endedAt = new Date();
+    const billing = await settleSessionRuntimeUsage({
+      userId,
+      sessionId,
+      runtimeState: 'active',
+      endedAt,
+    });
+    const session = await markSessionEnded(userId, sessionId, archive, endedAt);
+    return { session, archive, clear, archiveError, billing };
   } catch (error) {
     await markSessionError(userId, sessionId);
     throw error;
+  }
+}
+
+async function ensureCanStartBillableSession(userId: string) {
+  const settings = await getCodeBillingSettings();
+  if (!settings.enabled || settings.sessionCreateMinBalanceCredits <= 0) {
+    return;
+  }
+
+  let balance = await getBalance(userId);
+  if (balance >= settings.sessionCreateMinBalanceCredits) {
+    return;
+  }
+
+  const history = await getHistory(userId, 1);
+  if (history.length === 0) {
+    await grantForNewUser({
+      userId,
+      configs: await getAllConfigs(),
+    });
+    balance = await getBalance(userId);
+  }
+
+  if (balance < settings.sessionCreateMinBalanceCredits) {
+    throw new Error('Insufficient credits to start a new session');
   }
 }

@@ -58,6 +58,10 @@ interface CodeModelForm {
   label: string;
   baseUrl: string;
   description: string;
+  inputTokenCostCreditsPer1m: number;
+  outputTokenCostCreditsPer1m: number;
+  cachedInputTokenCostCreditsPer1m: number;
+  billingMultiplier: number;
   enabled: boolean;
   isDefault: boolean;
   sort: number;
@@ -70,6 +74,10 @@ const emptyForm: CodeModelForm = {
   label: '',
   baseUrl: defaultBaseUrl('claude'),
   description: '',
+  inputTokenCostCreditsPer1m: 0,
+  outputTokenCostCreditsPer1m: 0,
+  cachedInputTokenCostCreditsPer1m: 0,
+  billingMultiplier: 200,
   enabled: true,
   isDefault: false,
   sort: 10,
@@ -173,6 +181,10 @@ function CodeModelsPage() {
       label: model.label,
       baseUrl: model.baseUrl,
       description: model.description,
+      inputTokenCostCreditsPer1m: model.inputTokenCostCreditsPer1m,
+      outputTokenCostCreditsPer1m: model.outputTokenCostCreditsPer1m,
+      cachedInputTokenCostCreditsPer1m: model.cachedInputTokenCostCreditsPer1m,
+      billingMultiplier: model.billingMultiplier,
       enabled: model.enabled,
       isDefault: model.isDefault,
       sort: model.sort,
@@ -234,6 +246,17 @@ function CodeModelsPage() {
       ),
     },
     {
+      header: m['admin.code_models.billing_col'](),
+      cell: (model) => (
+        <div className="text-muted-foreground min-w-[180px] font-mono text-xs leading-5">
+          <p>in {model.inputTokenCostCreditsPer1m}/1M</p>
+          <p>out {model.outputTokenCostCreditsPer1m}/1M</p>
+          <p>cache {model.cachedInputTokenCostCreditsPer1m}/1M</p>
+          <p>x{(model.billingMultiplier / 100).toFixed(2)}</p>
+        </div>
+      ),
+    },
+    {
       header: m['admin.code_models.sort_col'](),
       className: 'w-[80px]',
       cell: (model) => model.sort,
@@ -285,7 +308,7 @@ function CodeModelsPage() {
             <Plus className="size-4" />
             {m['admin.code_models.create_model']()}
           </DialogTrigger>
-          <DialogContent className="sm:max-w-xl">
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>{m['admin.code_models.create_title']()}</DialogTitle>
               <DialogDescription>
@@ -329,7 +352,7 @@ function CodeModelsPage() {
         open={!!editingModel}
         onOpenChange={(open) => !open && setEditingModel(null)}
       >
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{m['admin.code_models.edit_title']()}</DialogTitle>
             <DialogDescription>
@@ -465,6 +488,70 @@ function renderFormFields(
           onChange={(event) =>
             onChange({ ...values, sort: Number(event.target.value) || 0 })
           }
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>{m['admin.code_models.input_cost_field']()}</Label>
+        <Input
+          type="number"
+          min={0}
+          value={values.inputTokenCostCreditsPer1m}
+          onChange={(event) =>
+            onChange({
+              ...values,
+              inputTokenCostCreditsPer1m: Number(event.target.value) || 0,
+            })
+          }
+          placeholder="0"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>{m['admin.code_models.output_cost_field']()}</Label>
+        <Input
+          type="number"
+          min={0}
+          value={values.outputTokenCostCreditsPer1m}
+          onChange={(event) =>
+            onChange({
+              ...values,
+              outputTokenCostCreditsPer1m: Number(event.target.value) || 0,
+            })
+          }
+          placeholder="0"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>{m['admin.code_models.cached_input_cost_field']()}</Label>
+        <Input
+          type="number"
+          min={0}
+          value={values.cachedInputTokenCostCreditsPer1m}
+          onChange={(event) =>
+            onChange({
+              ...values,
+              cachedInputTokenCostCreditsPer1m: Number(event.target.value) || 0,
+            })
+          }
+          placeholder="0"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>{m['admin.code_models.multiplier_field']()}</Label>
+        <Input
+          type="number"
+          min={1}
+          value={values.billingMultiplier}
+          onChange={(event) =>
+            onChange({
+              ...values,
+              billingMultiplier: Number(event.target.value) || 200,
+            })
+          }
+          placeholder="200"
         />
       </div>
 
