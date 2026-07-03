@@ -376,7 +376,7 @@ function CodeWorkspacePage() {
                 </Button>
               </div>
             </div>
-            <div className="relative h-[620px] min-h-0 overflow-hidden bg-[#17130f] p-3">
+            <div className="relative h-[calc(100vh-12rem)] min-h-[620px] overflow-hidden bg-[#17130f] p-3 lg:min-h-[720px]">
               <div ref={terminalRef} className="h-full min-h-0 w-full" />
               {!sessionId && (
                 <div className="absolute inset-0 flex items-center justify-center bg-[#17130f] px-6 text-center text-sm text-[#f4eadf]/70">
