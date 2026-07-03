@@ -37,6 +37,7 @@ export function useTerminalSession({
 } {
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [focused, setFocused] = useState(false);
+  const [terminalReady, setTerminalReady] = useState(false);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -187,67 +188,75 @@ export function useTerminalSession({
     let disposed = false;
     let removeWindowResize: (() => void) | null = null;
     if (!container) return;
+    setTerminalReady(false);
+    setStatus(sessionId ? 'connecting' : 'idle');
 
     (async () => {
-      const [{ Terminal }, { FitAddon }] = await Promise.all([
-        import('@xterm/xterm'),
-        import('@xterm/addon-fit'),
-      ]);
-      if (disposed) return;
+      try {
+        const [{ Terminal }, { FitAddon }] = await Promise.all([
+          import('@xterm/xterm'),
+          import('@xterm/addon-fit'),
+        ]);
+        if (disposed) return;
 
-      const term = new Terminal({
-        cursorBlink: true,
-        cursorStyle: 'block',
-        cursorInactiveStyle: 'outline',
-        convertEol: false,
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-        fontSize: 12,
-        letterSpacing: 0,
-        lineHeight: 1.15,
-        scrollback: 5000,
-        theme: {
-          background: '#17130f',
-          foreground: '#f4eadf',
-          cursor: '#ffffff',
-        },
-      });
-      const fit = new FitAddon();
-      term.loadAddon(fit);
-      term.open(container);
-      fit.fit();
-      term.focus();
-      term.onData((data) => {
-        sendInput(data);
-      });
-      term.onFocus(() => setFocused(true));
-      term.onBlur(() => setFocused(false));
+        const term = new Terminal({
+          cursorBlink: true,
+          cursorStyle: 'block',
+          cursorInactiveStyle: 'outline',
+          convertEol: false,
+          fontFamily:
+            'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+          fontSize: 12,
+          letterSpacing: 0,
+          lineHeight: 1.15,
+          scrollback: 5000,
+          theme: {
+            background: '#17130f',
+            foreground: '#f4eadf',
+            cursor: '#ffffff',
+          },
+        });
+        const fit = new FitAddon();
+        term.loadAddon(fit);
+        term.open(container);
+        fit.fit();
+        term.focus();
+        term.onData((data) => {
+          sendInput(data);
+        });
+        term.onFocus(() => setFocused(true));
+        term.onBlur(() => setFocused(false));
 
-      termRef.current = term;
-      fitRef.current = fit;
-      scheduleResizeBurst();
-      document.fonts?.ready
-        .then(() => {
-          if (!disposed) scheduleResizeBurst(true);
-        })
-        .catch(() => undefined);
+        termRef.current = term;
+        fitRef.current = fit;
+        scheduleResizeBurst();
+        document.fonts?.ready
+          .then(() => {
+            if (!disposed) scheduleResizeBurst(true);
+          })
+          .catch(() => undefined);
 
-      // The terminal's real pixel size settles after hydration/layout and can
-      // change without a window resize (side panels, font load, breakpoints).
-      // Track the container directly so xterm's cols/rows stay in sync with the
-      // dimensions we report to the PTY — otherwise Claude/tmux draw at the
-      // wrong width/height and the TUI renders garbled. Fires once on observe.
-      const resizeObserver = new ResizeObserver(() => scheduleResizeBurst());
-      resizeObserver.observe(container);
-      resizeObserverRef.current = resizeObserver;
-      const onWindowResize = () => scheduleResizeBurst();
-      window.addEventListener('resize', onWindowResize);
-      removeWindowResize = () =>
-        window.removeEventListener('resize', onWindowResize);
-      connect();
+        // The terminal's real pixel size settles after hydration/layout and can
+        // change without a window resize (side panels, font load, breakpoints).
+        // Track the container directly so xterm's cols/rows stay in sync with the
+        // dimensions we report to the PTY — otherwise Claude/tmux draw at the
+        // wrong width/height and the TUI renders garbled. Fires once on observe.
+        const resizeObserver = new ResizeObserver(() => scheduleResizeBurst());
+        resizeObserver.observe(container);
+        resizeObserverRef.current = resizeObserver;
+        const onWindowResize = () => scheduleResizeBurst();
+        window.addEventListener('resize', onWindowResize);
+        removeWindowResize = () =>
+          window.removeEventListener('resize', onWindowResize);
+        setTerminalReady(true);
+      } catch {
+        if (!disposed) setStatus('error');
+      }
     })();
 
     return () => {
       disposed = true;
+      setTerminalReady(false);
       removeWindowResize?.();
       resizeTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       resizeTimersRef.current = [];
@@ -259,8 +268,12 @@ export function useTerminalSession({
       termRef.current = null;
       fitRef.current = null;
     };
-    // Re-init on session change so "new session" starts a fresh terminal.
-  }, [sessionId, agent, connect, scheduleResizeBurst, container, sendInput]);
+  }, [container, scheduleResizeBurst, sendInput, sessionId]);
+
+  useEffect(() => {
+    if (!terminalReady) return;
+    connect();
+  }, [terminalReady, connect]);
 
   return { status, focused, reconnect, focus, scrollToBottom, enterScrollback };
 }
