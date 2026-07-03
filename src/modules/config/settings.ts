@@ -209,7 +209,7 @@ export function getSettings(): Setting[] {
       name: 'app_name',
       title: 'App Name',
       type: 'text',
-      placeholder: 'My App',
+      placeholder: 'hicode',
       group: 'appinfo',
       tab: 'general',
     },
@@ -217,7 +217,8 @@ export function getSettings(): Setting[] {
       name: 'app_description',
       title: 'App Description',
       type: 'textarea',
-      placeholder: 'Ship your SaaS faster',
+      placeholder:
+        'Run Claude Code and Codex online in secure cloud workspaces from your browser.',
       group: 'appinfo',
       tab: 'general',
     },
@@ -699,7 +700,7 @@ export function getSettings(): Setting[] {
     },
 
     // ─── Storage / R2 ────────────────────────────────────────────────
-    // Keys mirror the original ShipAny Two (`r2_*`) so existing DB config is read as-is.
+    // Keys mirror the legacy template (`r2_*`) so existing DB config is read as-is.
     {
       name: 'r2_access_key',
       title: 'Cloudflare Access Key',

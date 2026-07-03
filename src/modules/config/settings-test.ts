@@ -333,13 +333,13 @@ async function testR2(
     publicDomain: configs.r2_domain || undefined,
   });
 
-  const safeName = (inputs.filename || 'shipany-settings-test.txt').replace(
+  const safeName = (inputs.filename || 'hicode-settings-test.txt').replace(
     /[^a-zA-Z0-9._-]/g,
     '_'
   );
   const key = `settings-test/${Date.now()}-${safeName}`;
   const body = Buffer.from(
-    `ShipAny settings test\nTimestamp: ${new Date().toISOString()}\n`,
+    `hicode settings test\nTimestamp: ${new Date().toISOString()}\n`,
     'utf-8'
   );
 

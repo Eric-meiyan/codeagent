@@ -1,4 +1,4 @@
-// Pure helpers for the CodeAgent runtime session. No DOM / browser deps —
+// Pure helpers for the hicode runtime session. No DOM / browser deps —
 // safe to run under tsx and to import from server functions.
 
 export const CODE_SESSION_AGENTS = ['claude', 'codex'] as const;

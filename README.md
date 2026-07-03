@@ -1,6 +1,6 @@
-# CodeAgent
+# hicode
 
-CodeAgent is a browser-based AI coding workspace for running Claude Code-like agents inside secure cloud sandboxes. The product combines a SaaS control plane with a terminal-first coding workspace: auth, billing, credits, admin settings, `/code` workspace UI, and a path to connect Cloudflare Container runtime spikes.
+hicode is a browser-based AI coding workspace for running Claude Code and Codex inside secure cloud workspaces. The product combines a SaaS control plane with a terminal-first coding workspace: auth, billing, credits, admin settings, `/code` workspace UI, and a path to connect Cloudflare Container runtime spikes.
 
 ## Quick Start
 
@@ -21,7 +21,7 @@ Local development defaults to SQLite at `data/local.db`. Production URL is confi
 - `/code` workspace shell with sessions, runtime status, terminal, diff, preview, and archive panels
 - Auth, billing, credits, API keys, admin settings, CMS, and support modules from the ShipAny TanStack foundation
 - Local SQLite schema and RBAC roles initialized
-- Legal pages and blog posts rewritten for CodeAgent
+- Legal pages and blog posts rewritten for hicode
 
 ## Runtime Path
 
@@ -32,7 +32,7 @@ Browser xterm.js
 -> Worker WebSocket
 -> Cloudflare Container
 -> PTY / tmux
--> Claude Code-like CLI
+-> Claude Code / Codex CLI
 -> Platform model gateway
 -> Preview proxy and R2 archive/restore
 ```

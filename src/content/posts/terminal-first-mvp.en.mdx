@@ -1,12 +1,12 @@
 export const meta = {
-  title: 'Why CodeAgent starts with a terminal-first MVP',
+  title: 'Why hicode starts with a terminal-first MVP',
   description:
     'A terminal-first MVP reuses mature coding agents quickly, while leaving room for structured tool events later.',
-  author_name: 'CodeAgent Team',
+  author_name: 'hicode Team',
   created_at: '2026-07-02',
 };
 
-The fastest way to make an online coding agent useful is to preserve the tool it already understands: a terminal. CodeAgent starts by rendering a remote PTY through xterm.js and keeping the durable unit inside tmux.
+The fastest way to make an online coding agent useful is to preserve the tool it already understands: a terminal. hicode starts by rendering a remote PTY through xterm.js and keeping the durable unit inside tmux.
 
 That approach makes the MVP practical. The agent can run inside a cloud sandbox, use real project files, call a managed model gateway, and expose previews without first rebuilding every interaction as a custom chat protocol.
 

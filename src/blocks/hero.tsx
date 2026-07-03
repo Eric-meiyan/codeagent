@@ -103,7 +103,7 @@ export function Hero() {
                     </span>
                   </div>
                   <div className="bg-[#17130f] p-4 font-mono text-[13px] leading-6 text-[#f4eadf] sm:p-6">
-                    <p className="text-[#d9603a]">$ codeagent run</p>
+                    <p className="text-[#d9603a]">$ hicode run</p>
                     <p>{m['landing.hero.preview_command']()}</p>
                     <p className="mt-4 text-[#9ee493]">
                       <CheckCircle2 className="mr-2 inline size-4" />

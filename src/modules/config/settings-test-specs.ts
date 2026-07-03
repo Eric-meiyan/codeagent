@@ -149,7 +149,7 @@ export const testSpecs: Record<string, TestSpec> = {
         name: 'filename',
         label: 'Test filename',
         type: 'text',
-        defaultValue: 'shipany-settings-test.txt',
+        defaultValue: 'hicode-settings-test.txt',
       },
     ],
   },
