@@ -340,32 +340,51 @@ export function useTerminalSession({
         const fit = new FitAddon();
         term.loadAddon(fit);
         term.open(container);
-        fit.fit();
-        term.focus();
+
+        termRef.current = term;
+        fitRef.current = fit;
+
+        try {
+          fit.fit();
+        } catch (error) {
+          console.warn('[code-terminal] initial fit failed', error);
+        }
+
+        try {
+          term.focus();
+        } catch {
+          // Focus is ergonomic, not required for the websocket session.
+        }
+
         term.onData((data) => {
           sendInput(data);
         });
         term.onFocus(() => setFocused(true));
         term.onBlur(() => setFocused(false));
 
-        termRef.current = term;
-        fitRef.current = fit;
         flushPendingOutput();
         scheduleResizeBurst();
-        document.fonts?.ready
-          .then(() => {
-            if (!disposed) scheduleResizeBurst(true);
-          })
-          .catch(() => undefined);
+        const fontsReady = document.fonts?.ready;
+        if (fontsReady && typeof fontsReady.then === 'function') {
+          fontsReady
+            .then(() => {
+              if (!disposed) scheduleResizeBurst(true);
+            })
+            .catch(() => undefined);
+        }
 
         // The terminal's real pixel size settles after hydration/layout and can
         // change without a window resize (side panels, font load, breakpoints).
         // Track the container directly so xterm's cols/rows stay in sync with the
         // dimensions we report to the PTY — otherwise Claude/tmux draw at the
         // wrong width/height and the TUI renders garbled. Fires once on observe.
-        const resizeObserver = new ResizeObserver(() => scheduleResizeBurst());
-        resizeObserver.observe(container);
-        resizeObserverRef.current = resizeObserver;
+        if (typeof ResizeObserver !== 'undefined') {
+          const resizeObserver = new ResizeObserver(() =>
+            scheduleResizeBurst()
+          );
+          resizeObserver.observe(container);
+          resizeObserverRef.current = resizeObserver;
+        }
         const onWindowResize = () => scheduleResizeBurst();
         window.addEventListener('resize', onWindowResize);
         removeWindowResize = () =>
