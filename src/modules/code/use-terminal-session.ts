@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
-import { terminalWsUrl, type CodeSessionAgent } from './runtime';
-
 export type TerminalStatus =
   | 'idle'
   | 'connecting'
@@ -12,22 +10,11 @@ export type TerminalStatus =
   | 'error';
 
 interface Options {
-  runtimeBase: string;
-  userId: string;
   sessionId: string | null;
-  agent?: CodeSessionAgent;
-  model?: string;
   container: HTMLDivElement | null;
 }
 
-export function useTerminalSession({
-  runtimeBase,
-  userId,
-  sessionId,
-  agent,
-  model,
-  container,
-}: Options): {
+export function useTerminalSession({ sessionId, container }: Options): {
   status: TerminalStatus;
   focused: boolean;
   reconnect: () => void;
@@ -43,6 +30,15 @@ export function useTerminalSession({
   const socketRef = useRef<WebSocket | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const resizeTimersRef = useRef<number[]>([]);
+
+  const sessionTerminalUrl = useCallback((id: string) => {
+    const url = new URL(
+      `/api/code/sessions/${encodeURIComponent(id)}/terminal`,
+      window.location.href
+    );
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return url.toString();
+  }, []);
 
   const sendResize = useCallback((redraw = false) => {
     const term = termRef.current;
@@ -141,9 +137,7 @@ export function useTerminalSession({
       return;
     }
     setStatus('connecting');
-    const socket = new WebSocket(
-      terminalWsUrl(runtimeBase, userId, sessionId, agent, model)
-    );
+    const socket = new WebSocket(sessionTerminalUrl(sessionId));
     socket.binaryType = 'arraybuffer';
     socketRef.current = socket;
 
@@ -172,15 +166,7 @@ export function useTerminalSession({
       if (socketRef.current !== socket) return;
       setStatus('error');
     });
-  }, [
-    runtimeBase,
-    userId,
-    sessionId,
-    agent,
-    model,
-    scheduleResizeBurst,
-    configureTmux,
-  ]);
+  }, [sessionId, sessionTerminalUrl, scheduleResizeBurst, configureTmux]);
 
   const reconnect = useCallback(() => connect(), [connect]);
 

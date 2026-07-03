@@ -6,6 +6,7 @@ import {
   normalizeAgent,
   previewUrl,
   sanitizeUserId,
+  terminalHttpUrl,
   terminalWsUrl,
 } from './runtime';
 
@@ -27,6 +28,14 @@ assert.match(a, /^[a-z0-9-]+$/);
 assert.notEqual(a, b);
 
 // terminalWsUrl
+assert.equal(
+  terminalHttpUrl('https://rt.example.dev', 'u1', 's1'),
+  'https://rt.example.dev/terminal/u1/s1'
+);
+assert.equal(
+  terminalHttpUrl('https://rt.example.dev', 'u1', 's1', 'codex', 'm1'),
+  'https://rt.example.dev/terminal/u1/s1?agent=codex&model=m1'
+);
 assert.equal(
   terminalWsUrl('https://rt.example.dev', 'u1', 's1'),
   'wss://rt.example.dev/terminal/u1/s1'

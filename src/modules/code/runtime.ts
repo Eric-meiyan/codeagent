@@ -48,6 +48,20 @@ function appendSessionParams(
   return parsed.toString();
 }
 
+export function terminalHttpUrl(
+  base: string,
+  userId: string,
+  sessionId: string,
+  agent?: CodeSessionAgent,
+  model?: string
+): string {
+  return appendSessionParams(
+    `${trimSlashes(base)}/terminal/${encodeURIComponent(userId)}/${encodeURIComponent(sessionId)}`,
+    agent,
+    model
+  );
+}
+
 export function terminalWsUrl(
   base: string,
   userId: string,
@@ -55,11 +69,9 @@ export function terminalWsUrl(
   agent?: CodeSessionAgent,
   model?: string
 ): string {
-  const wsBase = trimSlashes(base).replace(/^http/, 'ws');
-  return appendSessionParams(
-    `${wsBase}/terminal/${encodeURIComponent(userId)}/${encodeURIComponent(sessionId)}`,
-    agent,
-    model
+  return terminalHttpUrl(base, userId, sessionId, agent, model).replace(
+    /^http/,
+    'ws'
   );
 }
 

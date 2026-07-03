@@ -109,11 +109,7 @@ function CodeWorkspacePage() {
     scrollToBottom,
     enterScrollback,
   } = useTerminalSession({
-    runtimeBase: loader.runtimeBase,
-    userId: loader.runtimeUserId,
     sessionId,
-    agent: currentSession?.agent ?? selectedAgent,
-    model: currentSession?.model || selectedModel,
     container: terminalElement,
   });
 
