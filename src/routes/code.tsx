@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import {
@@ -71,21 +71,24 @@ interface CodeLoaderData {
 
 function CodeWorkspacePage() {
   const loader = Route.useLoaderData() as CodeLoaderData;
-  const initialAgent = loader.session?.agent ?? 'claude';
+  const initialSession = loader.session ?? loader.sessions[0] ?? null;
+  const initialAgent = initialSession?.agent ?? 'claude';
   const [sessions, setSessions] = useState<CodeSessionView[]>(loader.sessions);
   const [sessionId, setSessionId] = useState<string | null>(
-    loader.session?.id ?? null
+    initialSession?.id ?? null
   );
   const [models] = useState<CodeModelView[]>(loader.models);
   const [selectedAgent, setSelectedAgent] =
     useState<CodeSessionAgent>(initialAgent);
   const [selectedModel, setSelectedModel] = useState<string>(
-    loader.session?.model || defaultModelFor(models, initialAgent)?.model || ''
+    initialSession?.model || defaultModelFor(models, initialAgent)?.model || ''
   );
   const [actionMsg, setActionMsg] = useState<string>('');
   const [busyAction, setBusyAction] = useState<string>('');
   const [previewNonce, setPreviewNonce] = useState(0);
-  const terminalRef = useRef<HTMLDivElement | null>(null);
+  const [terminalElement, setTerminalElement] = useState<HTMLDivElement | null>(
+    null
+  );
 
   const currentSession =
     sessions.find((session) => session.id === sessionId) ?? null;
@@ -111,7 +114,7 @@ function CodeWorkspacePage() {
     sessionId,
     agent: currentSession?.agent ?? selectedAgent,
     model: currentSession?.model || selectedModel,
-    containerRef: terminalRef,
+    container: terminalElement,
   });
 
   const newSession = async () => {
@@ -437,7 +440,7 @@ function CodeWorkspacePage() {
               onClick={focusTerminal}
             >
               <div
-                ref={terminalRef}
+                ref={setTerminalElement}
                 className="h-full min-h-0 w-full cursor-text"
               />
               {!sessionId && (

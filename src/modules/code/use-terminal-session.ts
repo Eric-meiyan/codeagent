@@ -17,7 +17,7 @@ interface Options {
   sessionId: string | null;
   agent?: CodeSessionAgent;
   model?: string;
-  containerRef: React.RefObject<HTMLDivElement | null>;
+  container: HTMLDivElement | null;
 }
 
 export function useTerminalSession({
@@ -26,7 +26,7 @@ export function useTerminalSession({
   sessionId,
   agent,
   model,
-  containerRef,
+  container,
 }: Options): {
   status: TerminalStatus;
   focused: boolean;
@@ -186,7 +186,6 @@ export function useTerminalSession({
   useEffect(() => {
     let disposed = false;
     let removeWindowResize: (() => void) | null = null;
-    const container = containerRef.current;
     if (!container) return;
 
     (async () => {
@@ -261,7 +260,7 @@ export function useTerminalSession({
       fitRef.current = null;
     };
     // Re-init on session change so "new session" starts a fresh terminal.
-  }, [sessionId, agent, connect, scheduleResizeBurst, containerRef, sendInput]);
+  }, [sessionId, agent, connect, scheduleResizeBurst, container, sendInput]);
 
   return { status, focused, reconnect, focus, scrollToBottom, enterScrollback };
 }
