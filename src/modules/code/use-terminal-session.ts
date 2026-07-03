@@ -343,6 +343,7 @@ export function useTerminalSession({
 
         termRef.current = term;
         fitRef.current = fit;
+        setTerminalReady(true);
 
         try {
           fit.fit();
@@ -389,9 +390,15 @@ export function useTerminalSession({
         window.addEventListener('resize', onWindowResize);
         removeWindowResize = () =>
           window.removeEventListener('resize', onWindowResize);
-        setTerminalReady(true);
-      } catch {
-        if (!disposed) setStatus('error');
+      } catch (error) {
+        console.warn('[code-terminal] terminal setup failed', error);
+        if (!disposed) {
+          if (termRef.current) {
+            setTerminalReady(true);
+          } else {
+            setStatus('error');
+          }
+        }
       }
     })();
 
