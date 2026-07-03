@@ -241,8 +241,9 @@ export function useTerminalSession({
   const reconnect = useCallback(() => {
     setMode('none');
     setStatus(sessionId ? 'connecting' : 'idle');
+    window.setTimeout(connect, 0);
     setConnectNonce((value) => value + 1);
-  }, [sessionId]);
+  }, [connect, sessionId]);
 
   useEffect(() => {
     let disposed = false;
