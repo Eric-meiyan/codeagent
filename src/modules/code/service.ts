@@ -53,6 +53,10 @@ function asIso(value: Date | string | number | null | undefined) {
   return new Date(value).toISOString();
 }
 
+function sessionRuntimeUserId(userId: string, sessionId: string) {
+  return `${sanitizeUserId(userId)}-${sessionId}`;
+}
+
 export function toView(row: CodeSession): CodeSessionView {
   return {
     id: row.id,
@@ -118,15 +122,15 @@ export async function createSession(
   }
 
   const now = new Date();
-  const runtimeUserId = sanitizeUserId(userId);
   const normalizedAgent = normalizeAgent(agent);
   const selectedModel = await getEnabledCodeModel(normalizedAgent, model);
+  const sessionId = generateSessionId();
   const row: NewCodeSession = {
-    id: generateSessionId(),
+    id: sessionId,
     agent: normalizedAgent,
     model: selectedModel.model,
     userId,
-    runtimeUserId,
+    runtimeUserId: sessionRuntimeUserId(userId, sessionId),
     status: 'active',
     title: '',
     lastActiveAt: now,
