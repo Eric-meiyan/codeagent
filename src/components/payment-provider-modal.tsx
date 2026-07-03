@@ -2,7 +2,7 @@
 
 import { CreditCard, Loader2 } from 'lucide-react';
 
-import { m } from '@/paraglide/messages.js';
+import { m } from '@/core/i18n/messages';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,

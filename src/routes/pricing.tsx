@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 
-import { m } from '@/paraglide/messages.js';
+import { m } from '@/core/i18n/messages';
 import { getLocale } from '@/paraglide/runtime.js';
 import { Footer } from '@/blocks/footer';
 import { Header } from '@/blocks/header';

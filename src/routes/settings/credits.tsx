@@ -4,10 +4,10 @@ import { createFileRoute } from '@tanstack/react-router';
 import { Coins } from 'lucide-react';
 
 import { tDynamic } from '@/core/i18n/dynamic';
+import { m } from '@/core/i18n/messages';
 import { Link } from '@/core/i18n/navigation';
 import { apiGet, type PageResult } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { DataTable, type Column } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';

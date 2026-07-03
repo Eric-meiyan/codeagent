@@ -10,8 +10,8 @@ import {
   User,
 } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { envConfigs } from '@/config';
-import { m } from '@/paraglide/messages.js';
 import { SupportWidget } from '@/blocks/support-widget';
 import { AppLayout } from '@/components/app-layout';
 

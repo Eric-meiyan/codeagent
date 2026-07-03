@@ -4,8 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
+import { m } from '@/core/i18n/messages';
 import { apiPatch } from '@/lib/api-client';
-import { m } from '@/paraglide/messages.js';
 import { TextField } from '@/components/form-field';
 import { ImageUploader, ImageUploaderValue } from '@/components/image-uploader';
 import { Button } from '@/components/ui/button';

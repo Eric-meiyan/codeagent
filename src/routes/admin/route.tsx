@@ -10,8 +10,8 @@ import {
   Shield,
 } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { envConfigs } from '@/config';
-import { m } from '@/paraglide/messages.js';
 import { AppLayout } from '@/components/app-layout';
 
 export const Route = createFileRoute('/admin')({

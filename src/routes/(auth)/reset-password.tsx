@@ -4,9 +4,9 @@ import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { resetPassword } from '@/core/auth/client';
+import { m } from '@/core/i18n/messages';
 import { Link, useRouter } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
-import { m } from '@/paraglide/messages.js';
 import { TextField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import {

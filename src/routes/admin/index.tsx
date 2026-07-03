@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { Shield, Users } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { apiGet } from '@/lib/api-client';
-import { m } from '@/paraglide/messages.js';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 function AdminPage() {

@@ -14,9 +14,9 @@ import {
 import { toast } from 'sonner';
 
 import { useSession } from '@/core/auth/client';
+import { m } from '@/core/i18n/messages';
 import { useRouter } from '@/core/i18n/navigation';
 import { apiPost } from '@/lib/api-client';
-import { m } from '@/paraglide/messages.js';
 import { usePublicConfig } from '@/hooks/use-public-config';
 import {
   PaymentProviderModal,

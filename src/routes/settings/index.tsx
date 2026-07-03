@@ -3,8 +3,8 @@ import { createFileRoute } from '@tanstack/react-router';
 import { Activity, CreditCard, Key, TrendingUp } from 'lucide-react';
 
 import { useSession } from '@/core/auth/client';
+import { m } from '@/core/i18n/messages';
 import { apiGet } from '@/lib/api-client';
-import { m } from '@/paraglide/messages.js';
 import {
   Card,
   CardContent,

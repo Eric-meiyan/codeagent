@@ -1,4 +1,4 @@
-import { m } from '@/paraglide/messages.js';
+import { m } from '@/core/i18n/messages';
 
 // Dynamic message lookup for keys built at runtime (tab labels, keyed
 // lists). Prefer static `m["ns.key"]()` whenever the key is known —

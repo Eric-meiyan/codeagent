@@ -3,8 +3,8 @@
 import { LogOutIcon, SettingsIcon, ShieldIcon } from 'lucide-react';
 
 import { signOut } from '@/core/auth/client';
+import { m } from '@/core/i18n/messages';
 import { Link, useRouter } from '@/core/i18n/navigation';
-import { m } from '@/paraglide/messages.js';
 import { useUserPermissions } from '@/hooks/use-user-permissions';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {

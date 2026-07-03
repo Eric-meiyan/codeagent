@@ -3,9 +3,9 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 
 import { tDynamic } from '@/core/i18n/dynamic';
+import { m } from '@/core/i18n/messages';
 import { apiGet, type PageResult } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { DataTable, type Column } from '@/components/data-table';
 import { Card, CardContent } from '@/components/ui/card';
 

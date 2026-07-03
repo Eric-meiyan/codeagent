@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 import { tDynamic } from '@/core/i18n/dynamic';
-import { m } from '@/paraglide/messages.js';
+import { m } from '@/core/i18n/messages';
 
 export function Features() {
   const features: { key: string; icon: LucideIcon }[] = [

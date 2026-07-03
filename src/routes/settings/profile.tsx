@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 
+import { m } from '@/core/i18n/messages';
 import { apiGet } from '@/lib/api-client';
-import { m } from '@/paraglide/messages.js';
 
 import { SettingsForm } from './-settings-form';
 

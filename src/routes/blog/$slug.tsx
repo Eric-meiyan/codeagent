@@ -2,9 +2,9 @@ import { createFileRoute, notFound } from '@tanstack/react-router';
 import { MDXProvider } from '@mdx-js/react';
 import { ArrowLeft, Calendar } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
-import { m } from '@/paraglide/messages.js';
 import { getLocale, localizeUrl } from '@/paraglide/runtime.js';
 import { Footer } from '@/blocks/footer';
 import { Header } from '@/blocks/header';

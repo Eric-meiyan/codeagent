@@ -18,6 +18,7 @@ import {
 
 import '@xterm/xterm/css/xterm.css';
 
+import { m } from '@/core/i18n/messages';
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import type { CodeModelView } from '@/modules/code/models';
@@ -34,7 +35,6 @@ import {
 } from '@/modules/code/use-terminal-session';
 import { apiPost } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {

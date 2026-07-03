@@ -8,10 +8,10 @@ import {
   Terminal,
 } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { DotPattern } from '@/components/ui/dot-pattern';
 
 export function Hero() {

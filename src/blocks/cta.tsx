@@ -1,8 +1,8 @@
 import { ArrowRight } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { Link } from '@/core/i18n/navigation';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { buttonVariants } from '@/components/ui/button';
 
 export function CTA() {

@@ -1,7 +1,7 @@
 import { ArrowRight } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { Link } from '@/core/i18n/navigation';
-import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { BlogCard } from '@/components/blog-card';
 import { formatPostDate, type BlogPost } from '@/content/posts';

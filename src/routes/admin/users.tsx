@@ -9,6 +9,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { Coins, MoreHorizontal, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { m } from '@/core/i18n/messages';
 import {
   apiDelete,
   apiGet,
@@ -16,7 +17,6 @@ import {
   pageQuery,
   type PageResult,
 } from '@/lib/api-client';
-import { m } from '@/paraglide/messages.js';
 import { DataTable, type Column } from '@/components/data-table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';

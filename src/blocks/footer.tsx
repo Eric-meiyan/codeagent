@@ -1,4 +1,4 @@
-import { m } from '@/paraglide/messages.js';
+import { m } from '@/core/i18n/messages';
 import { SiteFooter, type FooterColumn } from '@/components/site-footer';
 
 export function Footer() {

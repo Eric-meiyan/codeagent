@@ -1,8 +1,8 @@
 import type { ComponentType } from 'react';
 import { notFound, useLoaderData } from '@tanstack/react-router';
 
+import { m } from '@/core/i18n/messages';
 import { envConfigs } from '@/config';
-import { m } from '@/paraglide/messages.js';
 import { baseLocale, getLocale, localizeUrl } from '@/paraglide/runtime.js';
 
 type PageMeta = {

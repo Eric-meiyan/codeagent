@@ -5,6 +5,7 @@ import { ChevronDown, FlaskConical, Minus, Plus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { tDynamic } from '@/core/i18n/dynamic';
+import { m } from '@/core/i18n/messages';
 import {
   getSettingGroups,
   getSettings,
@@ -14,7 +15,6 @@ import {
 import { getTestSpec } from '@/modules/config/settings-test-specs';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { SettingsTestDialog } from '@/components/admin/settings-test-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

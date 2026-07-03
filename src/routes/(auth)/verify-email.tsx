@@ -4,9 +4,9 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { authClient, useSession } from '@/core/auth/client';
+import { m } from '@/core/i18n/messages';
 import { Link, useRouter } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
-import { m } from '@/paraglide/messages.js';
 import { deLocalizeHref, localizeHref } from '@/paraglide/runtime.js';
 import { Button } from '@/components/ui/button';
 import {

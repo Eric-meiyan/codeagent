@@ -12,9 +12,9 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { tDynamic } from '@/core/i18n/dynamic';
+import { m } from '@/core/i18n/messages';
 import { apiDelete, apiGet, apiPost, type PageResult } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { DataTable, type Column } from '@/components/data-table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

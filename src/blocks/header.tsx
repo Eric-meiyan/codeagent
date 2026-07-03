@@ -1,4 +1,4 @@
-import { m } from '@/paraglide/messages.js';
+import { m } from '@/core/i18n/messages';
 import { SiteHeader } from '@/components/site-header';
 
 export function Header() {

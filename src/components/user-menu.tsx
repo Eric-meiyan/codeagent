@@ -12,9 +12,9 @@ import {
 import { useTheme } from 'next-themes';
 
 import { signOut } from '@/core/auth/client';
+import { m } from '@/core/i18n/messages';
 import { useRouter } from '@/core/i18n/navigation';
 import { localeNames } from '@/config/locale';
-import { m } from '@/paraglide/messages.js';
 import {
   getLocale,
   locales,

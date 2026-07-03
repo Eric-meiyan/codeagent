@@ -4,9 +4,9 @@ import { useState, type ComponentType, type SVGProps } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { apiPost } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { Button } from '@/components/ui/button';
 
 type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;

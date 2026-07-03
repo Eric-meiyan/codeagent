@@ -2,8 +2,8 @@ import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { MDXProvider } from '@mdx-js/react';
 import { ArrowLeft } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { Link } from '@/core/i18n/navigation';
-import { m } from '@/paraglide/messages.js';
 import { mdxComponents } from '@/components/mdx-components';
 
 export const Route = createFileRoute('/(pages)')({

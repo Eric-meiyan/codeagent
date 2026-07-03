@@ -7,8 +7,8 @@ import {
 } from '@tanstack/react-table';
 import { ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {

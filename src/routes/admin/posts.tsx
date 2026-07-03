@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { tDynamic } from '@/core/i18n/dynamic';
+import { m } from '@/core/i18n/messages';
 import {
   apiDelete,
   apiGet,
@@ -21,7 +22,6 @@ import {
   type PageResult,
 } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { m } from '@/paraglide/messages.js';
 import { DataTable, type Column } from '@/components/data-table';
 import { TextField } from '@/components/form-field';
 import { RichTextEditor } from '@/components/rich-text-editor';

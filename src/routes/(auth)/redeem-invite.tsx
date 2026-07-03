@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 
 import { signOut, useSession } from '@/core/auth/client';
+import { m } from '@/core/i18n/messages';
 import { useRouter } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
-import { m } from '@/paraglide/messages.js';
 import { localizeHref } from '@/paraglide/runtime.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

@@ -1,5 +1,5 @@
 import { tDynamic } from '@/core/i18n/dynamic';
-import { m } from '@/paraglide/messages.js';
+import { m } from '@/core/i18n/messages';
 import {
   Accordion,
   AccordionContent,

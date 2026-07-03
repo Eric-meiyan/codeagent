@@ -9,6 +9,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { m } from '@/core/i18n/messages';
 import type { CodeModelView } from '@/modules/code/models';
 import {
   CODE_SESSION_AGENTS,
@@ -23,7 +24,6 @@ import {
   apiPut,
   type PageResult,
 } from '@/lib/api-client';
-import { m } from '@/paraglide/messages.js';
 import { DataTable, type Column } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

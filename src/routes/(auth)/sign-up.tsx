@@ -4,10 +4,10 @@ import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { authClient, signIn, signUp, useSession } from '@/core/auth/client';
+import { m } from '@/core/i18n/messages';
 import { Link, useRouter } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import { apiPost } from '@/lib/api-client';
-import { m } from '@/paraglide/messages.js';
 import { localizeHref } from '@/paraglide/runtime.js';
 import { usePublicConfig } from '@/hooks/use-public-config';
 import { TextField } from '@/components/form-field';

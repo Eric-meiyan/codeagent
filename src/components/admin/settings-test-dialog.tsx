@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
 
+import { m } from '@/core/i18n/messages';
 import type {
   TestField,
   TestResult,
   TestSpec,
 } from '@/modules/config/settings-test-specs';
 import { apiPost } from '@/lib/api-client';
-import { m } from '@/paraglide/messages.js';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
