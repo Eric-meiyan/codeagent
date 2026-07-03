@@ -158,17 +158,20 @@ export function useTerminalSession({
 
   const focus = useCallback(() => {
     termRef.current?.focus();
+    setFocused(Boolean(termRef.current));
   }, []);
 
   const scrollToBottom = useCallback(() => {
     termRef.current?.scrollToBottom();
     termRef.current?.focus();
+    setFocused(Boolean(termRef.current));
   }, []);
 
   const enterScrollback = useCallback(() => {
     // tmux copy-mode is the reliable scrollback path for full-screen TUIs.
     sendInput('\x02[');
     termRef.current?.focus();
+    setFocused(Boolean(termRef.current));
   }, [sendInput]);
 
   const connect = useCallback(() => {
@@ -354,6 +357,7 @@ export function useTerminalSession({
 
         try {
           term.focus();
+          setFocused(true);
         } catch {
           // Focus is ergonomic, not required for the websocket session.
         }
