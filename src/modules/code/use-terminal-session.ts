@@ -41,6 +41,7 @@ export function useTerminalSession({
   const [focused, setFocused] = useState(false);
   const [mode, setMode] = useState<TerminalConnectionMode>('none');
   const [terminalReady, setTerminalReady] = useState(false);
+  const [connectNonce, setConnectNonce] = useState(0);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -55,15 +56,14 @@ export function useTerminalSession({
       );
       proxy.protocol = proxy.protocol === 'https:' ? 'wss:' : 'ws:';
 
-      const urls: Array<{ mode: TerminalConnectionMode; url: string }> = [
-        { mode: 'proxy', url: proxy.toString() },
-      ];
+      const urls: Array<{ mode: TerminalConnectionMode; url: string }> = [];
       if (runtimeBase && runtimeUserId) {
         urls.push({
           mode: 'direct',
           url: terminalWsUrl(runtimeBase, runtimeUserId, id, agent, model),
         });
       }
+      urls.push({ mode: 'proxy', url: proxy.toString() });
       return urls;
     },
     [agent, model, runtimeBase, runtimeUserId]
@@ -177,23 +177,36 @@ export function useTerminalSession({
 
       setMode(target.mode);
       setStatus('connecting');
-      const socket = new WebSocket(target.url);
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(target.url);
+      } catch {
+        window.setTimeout(() => openSocket(index + 1), 0);
+        return;
+      }
       let opened = false;
       socket.binaryType = 'arraybuffer';
       socketRef.current = socket;
 
+      const clearConnectTimeout = () => {
+        window.clearTimeout(connectTimeout);
+      };
       const fallback = () => {
         if (socketRef.current !== socket) return;
+        clearConnectTimeout();
         if (opened || index >= urls.length - 1) {
           setStatus('error');
           return;
         }
         socketRef.current = null;
+        socket.close();
         window.setTimeout(() => openSocket(index + 1), 0);
       };
+      const connectTimeout = window.setTimeout(fallback, 8000);
 
       socket.addEventListener('open', () => {
         if (socketRef.current !== socket) return;
+        clearConnectTimeout();
         opened = true;
         setStatus('connected');
         scheduleResizeBurst(true);
@@ -212,6 +225,7 @@ export function useTerminalSession({
       });
       socket.addEventListener('close', () => {
         if (socketRef.current !== socket) return;
+        clearConnectTimeout();
         if (!opened && index < urls.length - 1) {
           fallback();
           return;
@@ -224,7 +238,11 @@ export function useTerminalSession({
     openSocket(0);
   }, [sessionId, sessionTerminalUrls, scheduleResizeBurst, configureTmux]);
 
-  const reconnect = useCallback(() => connect(), [connect]);
+  const reconnect = useCallback(() => {
+    setMode('none');
+    setStatus(sessionId ? 'connecting' : 'idle');
+    setConnectNonce((value) => value + 1);
+  }, [sessionId]);
 
   useEffect(() => {
     let disposed = false;
@@ -315,7 +333,7 @@ export function useTerminalSession({
   useEffect(() => {
     if (!terminalReady) return;
     connect();
-  }, [terminalReady, connect]);
+  }, [terminalReady, connect, connectNonce]);
 
   return {
     status,

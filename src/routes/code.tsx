@@ -424,6 +424,7 @@ function CodeWorkspacePage() {
                   <ArrowDownToLine className="size-3.5" />
                 </Button>
                 <Button
+                  type="button"
                   size="sm"
                   variant="outline"
                   className="h-7 rounded-full text-xs"
