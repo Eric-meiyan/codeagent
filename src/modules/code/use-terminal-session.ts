@@ -11,6 +11,7 @@ export type TerminalStatus =
   | 'closed'
   | 'error';
 export type TerminalConnectionMode = 'none' | 'proxy' | 'direct';
+type TerminalChunk = string | Uint8Array;
 
 interface Options {
   sessionId: string | null;
@@ -47,6 +48,28 @@ export function useTerminalSession({
   const socketRef = useRef<WebSocket | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const resizeTimersRef = useRef<number[]>([]);
+  const pendingOutputRef = useRef<TerminalChunk[]>([]);
+
+  const flushPendingOutput = useCallback(() => {
+    const term = termRef.current;
+    if (!term || pendingOutputRef.current.length === 0) return;
+    const chunks = pendingOutputRef.current;
+    pendingOutputRef.current = [];
+    chunks.forEach((chunk) => term.write(chunk));
+  }, []);
+
+  const writeTerminal = useCallback(
+    (chunk: TerminalChunk) => {
+      const term = termRef.current;
+      if (!term) {
+        pendingOutputRef.current.push(chunk);
+        return;
+      }
+      flushPendingOutput();
+      term.write(chunk);
+    },
+    [flushPendingOutput]
+  );
 
   const sessionTerminalUrls = useCallback(
     (id: string) => {
@@ -154,14 +177,13 @@ export function useTerminalSession({
   }, [sendInput]);
 
   const connect = useCallback(() => {
-    const term = termRef.current;
-    if (!term) return;
     if (socketRef.current) {
       socketRef.current.close();
       socketRef.current = null;
     }
+    pendingOutputRef.current = [];
     if (!sessionId) {
-      term.clear();
+      termRef.current?.clear();
       setMode('none');
       setStatus('idle');
       return;
@@ -213,14 +235,14 @@ export function useTerminalSession({
         configureTmux();
         // xterm only emits onData (keystrokes) while its helper textarea holds
         // focus; focus on connect so the user can type without clicking first.
-        term.focus();
+        termRef.current?.focus();
       });
       socket.addEventListener('message', (event) => {
         if (socketRef.current !== socket) return;
         if (typeof event.data === 'string') {
-          term.write(event.data);
+          writeTerminal(event.data);
         } else {
-          term.write(new Uint8Array(event.data as ArrayBuffer));
+          writeTerminal(new Uint8Array(event.data as ArrayBuffer));
         }
       });
       socket.addEventListener('close', () => {
@@ -236,7 +258,13 @@ export function useTerminalSession({
     };
 
     openSocket(0);
-  }, [sessionId, sessionTerminalUrls, scheduleResizeBurst, configureTmux]);
+  }, [
+    sessionId,
+    sessionTerminalUrls,
+    scheduleResizeBurst,
+    configureTmux,
+    writeTerminal,
+  ]);
 
   const reconnect = useCallback(() => {
     setMode('none');
@@ -290,6 +318,7 @@ export function useTerminalSession({
 
         termRef.current = term;
         fitRef.current = fit;
+        flushPendingOutput();
         scheduleResizeBurst();
         document.fonts?.ready
           .then(() => {
@@ -325,11 +354,18 @@ export function useTerminalSession({
       resizeObserverRef.current = null;
       socketRef.current?.close();
       socketRef.current = null;
+      pendingOutputRef.current = [];
       termRef.current?.dispose();
       termRef.current = null;
       fitRef.current = null;
     };
-  }, [container, scheduleResizeBurst, sendInput, sessionId]);
+  }, [
+    container,
+    flushPendingOutput,
+    scheduleResizeBurst,
+    sendInput,
+    sessionId,
+  ]);
 
   useEffect(() => {
     if (!terminalReady) return;
