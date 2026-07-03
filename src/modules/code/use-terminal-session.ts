@@ -207,11 +207,16 @@ export function useTerminalSession({
         return;
       }
       let opened = false;
+      let keepAliveInterval: number | undefined;
       socket.binaryType = 'arraybuffer';
       socketRef.current = socket;
 
       const clearConnectTimeout = () => {
         window.clearTimeout(connectTimeout);
+        if (keepAliveInterval) {
+          window.clearInterval(keepAliveInterval);
+          keepAliveInterval = undefined;
+        }
       };
       const fallback = () => {
         if (socketRef.current !== socket) return;
@@ -249,6 +254,19 @@ export function useTerminalSession({
         opened = true;
         setStatus('connected');
         scheduleResizeBurst(true);
+        keepAliveInterval = window.setInterval(() => {
+          if (
+            socketRef.current !== socket ||
+            socket.readyState !== WebSocket.OPEN
+          ) {
+            if (keepAliveInterval) {
+              window.clearInterval(keepAliveInterval);
+              keepAliveInterval = undefined;
+            }
+            return;
+          }
+          socket.send(JSON.stringify({ type: 'heartbeat' }));
+        }, 20000);
         // xterm only emits onData (keystrokes) while its helper textarea holds
         // focus; focus on connect so the user can type without clicking first.
         termRef.current?.focus();
