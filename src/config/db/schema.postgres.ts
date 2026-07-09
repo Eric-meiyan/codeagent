@@ -662,6 +662,38 @@ export const codeSession = table(
   ]
 );
 
+export const codeSessionEvent = table(
+  'code_session_event',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    sessionId: text('session_id').notNull(),
+    runtimeUserId: text('runtime_user_id').notNull().default(''),
+    agent: text('agent').notNull().default('claude'),
+    model: text('model').notNull().default(''),
+    eventType: text('event_type').notNull(),
+    severity: text('severity').notNull().default('info'),
+    source: text('source').notNull().default('app'),
+    message: text('message').notNull().default(''),
+    metadata: text('metadata').notNull().default(''),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [
+    index('idx_code_session_event_user_created').on(t.userId, t.createdAt),
+    index('idx_code_session_event_session_created').on(
+      t.sessionId,
+      t.createdAt
+    ),
+    index('idx_code_session_event_type').on(t.eventType),
+    index('idx_code_session_event_severity_created').on(
+      t.severity,
+      t.createdAt
+    ),
+  ]
+);
+
 export const codeBillingEvent = table(
   'code_billing_event',
   {

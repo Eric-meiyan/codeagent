@@ -1,9 +1,10 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNotNull } from 'drizzle-orm';
 
 import { db } from '@/core/db';
 import { envConfigs } from '@/config';
 import {
   codeSession,
+  codeSessionEvent,
   type CodeSession,
   type NewCodeSession,
 } from '@/config/db/schema';
@@ -44,6 +45,22 @@ export interface CodeSessionView {
 export interface RuntimeActionResult {
   ok?: boolean;
   [key: string]: unknown;
+}
+
+type CodeSessionEventSeverity = 'info' | 'warn' | 'error';
+type CodeSessionEventSource = 'app' | 'browser' | 'runtime';
+
+interface RecordCodeSessionEventInput {
+  userId: string;
+  sessionId: string;
+  runtimeUserId?: string;
+  agent?: unknown;
+  model?: string;
+  eventType: string;
+  severity?: CodeSessionEventSeverity;
+  source?: CodeSessionEventSource;
+  message?: string;
+  metadata?: Record<string, unknown>;
 }
 
 function maxActiveSessions() {
@@ -89,6 +106,24 @@ export async function listSessions(userId: string): Promise<CodeSessionView[]> {
     )
     .orderBy(desc(codeSession.lastActiveAt))
     .limit(10);
+  return rows.map(toView);
+}
+
+export async function listArchivedSessions(
+  userId: string
+): Promise<CodeSessionView[]> {
+  const rows = await db()
+    .select()
+    .from(codeSession)
+    .where(
+      and(
+        eq(codeSession.userId, userId),
+        eq(codeSession.status, 'ended'),
+        isNotNull(codeSession.archiveKey)
+      )
+    )
+    .orderBy(desc(codeSession.lastActiveAt))
+    .limit(20);
   return rows.map(toView);
 }
 
@@ -150,6 +185,16 @@ export async function createSession(
   await db().insert(codeSession).values(row);
   const created = await getOwnedSession(userId, row.id);
   if (!created) throw new Error('Failed to create code session');
+  await recordCodeSessionEvent({
+    userId,
+    sessionId: created.id,
+    runtimeUserId: created.runtimeUserId,
+    agent: created.agent,
+    model: created.model,
+    eventType: 'session.created',
+    message: 'Session created',
+    metadata: { status: created.status },
+  });
   return toView(created);
 }
 
@@ -235,6 +280,222 @@ function digestFromArchive(archive?: RuntimeActionResult | null) {
   return typeof digest === 'string' ? digest : undefined;
 }
 
+export async function recordCodeSessionEvent({
+  userId,
+  sessionId,
+  runtimeUserId = '',
+  agent,
+  model = '',
+  eventType,
+  severity = 'info',
+  source = 'app',
+  message = '',
+  metadata = {},
+}: RecordCodeSessionEventInput) {
+  const normalizedAgent = normalizeAgent(agent);
+  const event = {
+    id: generateEventId(),
+    userId,
+    sessionId,
+    runtimeUserId,
+    agent: normalizedAgent,
+    model,
+    eventType: safeString(eventType, 96),
+    severity,
+    source,
+    message: safeString(message, 500),
+    metadata: serializeMetadata(metadata),
+    createdAt: new Date(),
+  };
+
+  console.info('[code-session-event]', event);
+
+  try {
+    await db().insert(codeSessionEvent).values(event);
+  } catch (error) {
+    console.warn('[code-session-event-failed]', {
+      sessionId,
+      eventType: event.eventType,
+      message: (error as Error).message,
+    });
+  }
+}
+
+export async function recordClientSessionEvent(
+  userId: string,
+  sessionId: string,
+  input: Record<string, unknown>
+) {
+  const row = await getOwnedSession(userId, sessionId);
+  if (!row) throw new Error('Session not found');
+
+  const eventType =
+    typeof input.eventType === 'string' &&
+    input.eventType.startsWith('terminal.')
+      ? input.eventType
+      : 'terminal.client';
+  const severity =
+    input.severity === 'warn' || input.severity === 'error'
+      ? input.severity
+      : 'info';
+  const metadata =
+    input.metadata && typeof input.metadata === 'object'
+      ? (input.metadata as Record<string, unknown>)
+      : {};
+
+  await recordCodeSessionEvent({
+    userId,
+    sessionId,
+    runtimeUserId: row.runtimeUserId,
+    agent: row.agent,
+    model: row.model,
+    eventType,
+    severity,
+    source: 'browser',
+    message: typeof input.message === 'string' ? input.message : '',
+    metadata,
+  });
+
+  return { ok: true };
+}
+
+export async function listSessionEvents(
+  userId: string,
+  sessionId: string,
+  limit = 100
+) {
+  const rows = await db()
+    .select()
+    .from(codeSessionEvent)
+    .where(
+      and(
+        eq(codeSessionEvent.userId, userId),
+        eq(codeSessionEvent.sessionId, sessionId)
+      )
+    )
+    .orderBy(desc(codeSessionEvent.createdAt))
+    .limit(Math.min(Math.max(limit, 1), 200));
+
+  return rows.map((row: any) => ({
+    ...row,
+    createdAt: asIso(row.createdAt),
+  }));
+}
+
+function generateEventId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `evt-${Date.now().toString(36)}`;
+}
+
+function safeString(value: unknown, maxLength: number) {
+  if (typeof value !== 'string') return '';
+  return value.length > maxLength ? value.slice(0, maxLength) : value;
+}
+
+function serializeMetadata(metadata: Record<string, unknown>) {
+  try {
+    const json = JSON.stringify(sanitizeMetadata(metadata));
+    return json.length > 4000 ? json.slice(0, 4000) : json;
+  } catch {
+    return '';
+  }
+}
+
+function sanitizeMetadata(value: unknown, depth = 0): unknown {
+  if (value == null) return value;
+  if (typeof value === 'string') return safeString(value, 500);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (depth >= 3) return '[truncated]';
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => sanitizeMetadata(item, depth + 1));
+  }
+  if (typeof value === 'object') {
+    const output: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(
+      value as Record<string, unknown>
+    )) {
+      if (
+        /^(apiKey|accessToken|refreshToken|idToken|password|secret|authorization|cookie)$/i.test(
+          key
+        )
+      ) {
+        output[key] = '[redacted]';
+        continue;
+      }
+      output[safeString(key, 80)] = sanitizeMetadata(item, depth + 1);
+    }
+    return output;
+  }
+  return String(value);
+}
+
+function pickRuntimeFields(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== 'object') return {};
+  const record = payload as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const key of [
+    'ok',
+    'exists',
+    'state',
+    'status',
+    'agent',
+    'model',
+    'workspace',
+    'runtimeUserId',
+    'sessionId',
+    'key',
+    'versionKey',
+    'archiveSha256',
+    'workspaceDigest',
+    'digest',
+    'files',
+    'fileCount',
+    'previousFileCount',
+    'bytes',
+    'durationSeconds',
+    'chargedCredits',
+  ]) {
+    if (record[key] !== undefined) output[key] = record[key];
+  }
+  return output;
+}
+
+function archiveMetadata(archive?: RuntimeActionResult | null) {
+  if (!archive) return {};
+  return {
+    key: typeof archive.key === 'string' ? archive.key : '',
+    versionKey:
+      typeof archive.versionKey === 'string' ? archive.versionKey : '',
+    digest: digestFromArchive(archive) || '',
+    bytes:
+      typeof archive.bytes === 'number'
+        ? archive.bytes
+        : typeof archive.size === 'number'
+          ? archive.size
+          : undefined,
+    files:
+      typeof archive.files === 'number'
+        ? archive.files
+        : typeof archive.fileCount === 'number'
+          ? archive.fileCount
+          : undefined,
+  };
+}
+
+function booleanField(payload: unknown, field: string) {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as Record<string, unknown>)[field];
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function stringField(payload: unknown, field: string) {
+  if (!payload || typeof payload !== 'object') return '';
+  const value = (payload as Record<string, unknown>)[field];
+  return typeof value === 'string' ? value : '';
+}
+
 async function runtimeJson(
   action: string,
   runtimeUserId: string,
@@ -270,14 +531,96 @@ async function runtimeJson(
 export async function health(userId: string, sessionId: string) {
   const row = await getOwnedSession(userId, sessionId);
   if (!row) throw new Error('Session not found');
-  return runtimeJson(
-    'container-health',
-    row.runtimeUserId,
-    sessionId,
-    'GET',
-    normalizeAgent(row.agent),
-    row.model
-  );
+  try {
+    const health = await runtimeJson(
+      'container-health',
+      row.runtimeUserId,
+      sessionId,
+      'GET',
+      normalizeAgent(row.agent),
+      row.model
+    );
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.health',
+      message: 'Runtime health checked',
+      metadata: pickRuntimeFields(health),
+    });
+    return health;
+  } catch (error) {
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.health.failed',
+      severity: 'warn',
+      message: (error as Error).message,
+    });
+    throw error;
+  }
+}
+
+export async function inspectSession(userId: string, sessionId: string) {
+  const row = await getOwnedSession(userId, sessionId);
+  if (!row) throw new Error('Session not found');
+  if (row.status !== 'active') throw new Error('Session is not active');
+
+  const agent = normalizeAgent(row.agent);
+  try {
+    const [tmuxStatus, workspace] = await Promise.all([
+      runtimeJson(
+        'tmux',
+        row.runtimeUserId,
+        sessionId,
+        'GET',
+        agent,
+        row.model
+      ),
+      runtimeJson(
+        'inspect',
+        row.runtimeUserId,
+        sessionId,
+        'GET',
+        agent,
+        row.model
+      ),
+    ]);
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.inspect',
+      message: 'Runtime inspected',
+      metadata: {
+        tmuxExists: booleanField(tmuxStatus, 'exists'),
+        workspaceExists: booleanField(workspace, 'exists'),
+        tmuxState: stringField(tmuxStatus, 'state'),
+        workspacePath: stringField(workspace, 'workspace'),
+      },
+    });
+
+    return { session: toView(row), tmuxStatus, workspace };
+  } catch (error) {
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.inspect.failed',
+      severity: 'warn',
+      message: (error as Error).message,
+    });
+    throw error;
+  }
 }
 
 export async function archiveSession(userId: string, sessionId: string) {
@@ -285,17 +628,41 @@ export async function archiveSession(userId: string, sessionId: string) {
   if (!row) throw new Error('Session not found');
   if (row.status !== 'active') throw new Error('Session is not active');
 
-  const archive = await runtimeJson(
-    'archive',
-    row.runtimeUserId,
-    sessionId,
-    'GET',
-    normalizeAgent(row.agent),
-    row.model
-  );
-  const session = await recordArchive(userId, sessionId, archive);
+  try {
+    const archive = await runtimeJson(
+      'archive',
+      row.runtimeUserId,
+      sessionId,
+      'GET',
+      normalizeAgent(row.agent),
+      row.model
+    );
+    const session = await recordArchive(userId, sessionId, archive);
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.archive',
+      message: 'Workspace archived',
+      metadata: archiveMetadata(archive),
+    });
 
-  return { session, archive };
+    return { session, archive };
+  } catch (error) {
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.archive.failed',
+      severity: 'warn',
+      message: (error as Error).message,
+    });
+    throw error;
+  }
 }
 
 export async function restoreSession(userId: string, sessionId: string) {
@@ -303,17 +670,93 @@ export async function restoreSession(userId: string, sessionId: string) {
   if (!row) throw new Error('Session not found');
   if (row.status !== 'active') throw new Error('Session is not active');
 
-  const restore = await runtimeJson(
-    'restore',
-    row.runtimeUserId,
-    sessionId,
-    'POST',
-    normalizeAgent(row.agent),
-    row.model
-  );
-  const session = await touchSession(userId, sessionId);
+  try {
+    const restore = await runtimeJson(
+      'restore',
+      row.runtimeUserId,
+      sessionId,
+      'POST',
+      normalizeAgent(row.agent),
+      row.model
+    );
+    const session = await touchSession(userId, sessionId);
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.restore',
+      message: 'Workspace restored',
+      metadata: pickRuntimeFields(restore),
+    });
 
-  return { session, restore };
+    return { session, restore };
+  } catch (error) {
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.restore.failed',
+      severity: 'warn',
+      message: (error as Error).message,
+    });
+    throw error;
+  }
+}
+
+export async function resumeArchivedSession(userId: string, sessionId: string) {
+  const row = await getOwnedSession(userId, sessionId);
+  if (!row) throw new Error('Session not found');
+  if (row.status !== 'ended') throw new Error('Session is not archived');
+  if (!row.archiveKey) throw new Error('Archived workspace not found');
+
+  await ensureCanStartBillableSession(userId);
+
+  const activeRows = await db()
+    .select({ id: codeSession.id })
+    .from(codeSession)
+    .where(
+      and(eq(codeSession.userId, userId), eq(codeSession.status, 'active'))
+    )
+    .limit(maxActiveSessions());
+
+  if (activeRows.length >= maxActiveSessions()) {
+    throw new Error('End the current session before restoring this archive');
+  }
+
+  const now = new Date();
+  await db()
+    .update(codeSession)
+    .set({
+      status: 'active',
+      endedAt: null,
+      lastActiveAt: now,
+      updatedAt: now,
+    })
+    .where(and(eq(codeSession.userId, userId), eq(codeSession.id, sessionId)));
+
+  const resumed = await getOwnedSession(userId, sessionId);
+  if (!resumed) throw new Error('Session not found');
+
+  await recordCodeSessionEvent({
+    userId,
+    sessionId,
+    runtimeUserId: resumed.runtimeUserId,
+    agent: resumed.agent,
+    model: resumed.model,
+    eventType: 'session.resumed',
+    message: 'Archived session resumed',
+    metadata: {
+      archiveKey: row.archiveKey,
+      archiveDigest: row.archiveDigest || '',
+      previousEndedAt: asIso(row.endedAt),
+    },
+  });
+
+  return { session: toView(resumed), restorePending: true };
 }
 
 export async function endSession(userId: string, sessionId: string) {
@@ -334,6 +777,17 @@ export async function endSession(userId: string, sessionId: string) {
       );
     } catch (error) {
       archiveError = (error as Error).message || 'Archive failed';
+      await recordCodeSessionEvent({
+        userId,
+        sessionId,
+        runtimeUserId: row.runtimeUserId,
+        agent: row.agent,
+        model: row.model,
+        eventType: 'session.archive.failed',
+        severity: 'warn',
+        message: archiveError,
+        metadata: { during: 'session.end' },
+      });
     }
   }
 
@@ -354,9 +808,33 @@ export async function endSession(userId: string, sessionId: string) {
       endedAt,
     });
     const session = await markSessionEnded(userId, sessionId, archive, endedAt);
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.ended',
+      message: 'Session ended',
+      metadata: {
+        archiveError,
+        archive: archiveMetadata(archive),
+        billing: pickRuntimeFields(billing),
+      },
+    });
     return { session, archive, clear, archiveError, billing };
   } catch (error) {
     await markSessionError(userId, sessionId);
+    await recordCodeSessionEvent({
+      userId,
+      sessionId,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.end.failed',
+      severity: 'error',
+      message: (error as Error).message,
+    });
     throw error;
   }
 }

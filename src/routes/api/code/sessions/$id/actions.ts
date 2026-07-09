@@ -5,7 +5,14 @@ import * as codeSessions from '@/modules/code/service';
 import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
 import { respData, respErr } from '@/lib/resp';
 
-const ACTIONS = ['health', 'archive', 'restore', 'end'] as const;
+const ACTIONS = [
+  'health',
+  'inspect',
+  'archive',
+  'restore',
+  'resume',
+  'end',
+] as const;
 type Action = (typeof ACTIONS)[number];
 
 async function currentUser(request: Request) {
@@ -28,23 +35,29 @@ async function POST({
 }) {
   try {
     const user = await currentUser(request);
+    const body = await request.json().catch(() => ({}));
+    if (!isAction(body.action)) return respErr('Invalid action');
+
     const limited = enforceMinIntervalRateLimit(request, {
       intervalMs: 2000,
       keyPrefix: 'code-session-action',
-      extraKey: `${user.id}:${params.id}`,
+      extraKey: `${user.id}:${params.id}:${body.action}`,
     });
     if (limited) return limited;
-
-    const body = await request.json().catch(() => ({}));
-    if (!isAction(body.action)) return respErr('Invalid action');
 
     switch (body.action) {
       case 'health':
         return respData(await codeSessions.health(user.id, params.id));
+      case 'inspect':
+        return respData(await codeSessions.inspectSession(user.id, params.id));
       case 'archive':
         return respData(await codeSessions.archiveSession(user.id, params.id));
       case 'restore':
         return respData(await codeSessions.restoreSession(user.id, params.id));
+      case 'resume':
+        return respData(
+          await codeSessions.resumeArchivedSession(user.id, params.id)
+        );
       case 'end':
         return respData(await codeSessions.endSession(user.id, params.id));
     }

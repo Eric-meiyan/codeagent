@@ -15,7 +15,11 @@ async function currentUser(request: Request) {
 async function GET({ request }: { request: Request }) {
   try {
     const user = await currentUser(request);
-    const sessions = await codeSessions.listSessions(user.id);
+    const url = new URL(request.url);
+    const sessions =
+      url.searchParams.get('status') === 'archived'
+        ? await codeSessions.listArchivedSessions(user.id)
+        : await codeSessions.listSessions(user.id);
     return respData(sessions);
   } catch (error: any) {
     return respErr(error.message || 'Failed to list code sessions');

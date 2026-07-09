@@ -13,6 +13,13 @@ export type TerminalStatus =
 export type TerminalConnectionMode = 'none' | 'proxy' | 'direct';
 type TerminalChunk = string;
 
+export interface TerminalConnectionEvent {
+  eventType: string;
+  severity?: 'info' | 'warn' | 'error';
+  message?: string;
+  metadata?: Record<string, unknown>;
+}
+
 interface Options {
   sessionId: string | null;
   container: HTMLDivElement | null;
@@ -20,6 +27,7 @@ interface Options {
   runtimeUserId?: string | null;
   agent?: CodeSessionAgent;
   model?: string;
+  onConnectionEvent?: (event: TerminalConnectionEvent) => void;
 }
 
 export function useTerminalSession({
@@ -29,6 +37,7 @@ export function useTerminalSession({
   runtimeUserId,
   agent,
   model,
+  onConnectionEvent,
 }: Options): {
   status: TerminalStatus;
   focused: boolean;
@@ -50,6 +59,17 @@ export function useTerminalSession({
   const resizeTimersRef = useRef<number[]>([]);
   const pendingOutputRef = useRef<TerminalChunk[]>([]);
   const textDecoderRef = useRef<TextDecoder | null>(null);
+
+  const reportConnectionEvent = useCallback(
+    (event: TerminalConnectionEvent) => {
+      try {
+        onConnectionEvent?.(event);
+      } catch (error) {
+        console.warn('[code-terminal] event report failed', error);
+      }
+    },
+    [onConnectionEvent]
+  );
 
   const flushPendingOutput = useCallback(() => {
     const term = termRef.current;
@@ -193,16 +213,48 @@ export function useTerminalSession({
     const openSocket = (index: number, targetStartedAt = Date.now()) => {
       const target = urls[index];
       if (!target) {
+        reportConnectionEvent({
+          eventType: 'terminal.error',
+          severity: 'error',
+          message: 'No terminal endpoint available',
+          metadata: { mode: 'none' },
+        });
         setStatus('error');
         return;
       }
 
       setMode(target.mode);
       setStatus('connecting');
+      const attemptStartedAt = Date.now();
+      const eventMetadata = (extra: Record<string, unknown> = {}) => ({
+        mode: target.mode,
+        index,
+        elapsedMs: Date.now() - attemptStartedAt,
+        totalElapsedMs: Date.now() - targetStartedAt,
+        ...extra,
+      });
+      const reportSocketEvent = (
+        eventType: string,
+        severity: 'info' | 'warn' | 'error',
+        message: string,
+        metadata: Record<string, unknown> = {}
+      ) => {
+        reportConnectionEvent({
+          eventType,
+          severity,
+          message,
+          metadata: eventMetadata(metadata),
+        });
+      };
       let socket: WebSocket;
       try {
         socket = new WebSocket(target.url);
       } catch {
+        reportSocketEvent(
+          'terminal.error',
+          'warn',
+          'Terminal WebSocket constructor failed'
+        );
         window.setTimeout(() => openSocket(index + 1), 0);
         return;
       }
@@ -218,7 +270,7 @@ export function useTerminalSession({
           keepAliveInterval = undefined;
         }
       };
-      const fallback = () => {
+      const fallback = (reason = 'fallback') => {
         if (socketRef.current !== socket) return;
         clearConnectTimeout();
         if (
@@ -232,9 +284,25 @@ export function useTerminalSession({
           return;
         }
         if (opened || index >= urls.length - 1) {
+          reportSocketEvent(
+            'terminal.error',
+            'error',
+            'Terminal connection failed',
+            { reason, opened }
+          );
           setStatus('error');
           return;
         }
+        reportSocketEvent(
+          'terminal.fallback',
+          'warn',
+          'Terminal connection fallback',
+          {
+            reason,
+            from: target.mode,
+            to: urls[index + 1]?.mode || 'none',
+          }
+        );
         socketRef.current = null;
         socket.close();
         window.setTimeout(() => openSocket(index + 1), 0);
@@ -252,6 +320,7 @@ export function useTerminalSession({
         if (socketRef.current !== socket) return;
         clearConnectTimeout();
         opened = true;
+        reportSocketEvent('terminal.open', 'info', 'Terminal connected');
         setStatus('connected');
         scheduleResizeBurst(true);
         keepAliveInterval = window.setInterval(() => {
@@ -287,21 +356,33 @@ export function useTerminalSession({
           );
         }
       });
-      socket.addEventListener('close', () => {
+      socket.addEventListener('close', (event) => {
         if (socketRef.current !== socket) return;
         clearConnectTimeout();
         if (!opened && index < urls.length - 1) {
-          fallback();
+          fallback('close_before_open');
           return;
         }
+        reportSocketEvent(
+          'terminal.close',
+          event.wasClean ? 'info' : 'warn',
+          'Terminal WebSocket closed',
+          {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+            opened,
+          }
+        );
         setStatus('closed');
       });
-      socket.addEventListener('error', fallback);
+      socket.addEventListener('error', () => fallback('socket_error'));
     };
 
     openSocket(0);
   }, [
     decodeTerminalBytes,
+    reportConnectionEvent,
     sessionId,
     sessionTerminalUrls,
     scheduleResizeBurst,

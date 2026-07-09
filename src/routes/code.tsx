@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import {
@@ -31,11 +31,20 @@ import {
 import type { CodeSessionView } from '@/modules/code/service';
 import {
   useTerminalSession,
+  type TerminalConnectionEvent,
   type TerminalStatus,
 } from '@/modules/code/use-terminal-session';
 import { apiPost } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -45,13 +54,21 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-type CodeAction = 'health' | 'archive' | 'restore' | 'end';
+type CodeAction =
+  | 'health'
+  | 'inspect'
+  | 'archive'
+  | 'restore'
+  | 'resume'
+  | 'end';
 
 interface CodeActionResponse {
   session?: CodeSessionView;
   archive?: Record<string, unknown> | null;
   restore?: Record<string, unknown>;
   clear?: Record<string, unknown>;
+  tmuxStatus?: Record<string, unknown>;
+  workspace?: Record<string, unknown>;
   archiveError?: string | null;
   tmux?: string;
   claude?: string;
@@ -65,6 +82,7 @@ interface CodeLoaderData {
   runtimeUserId: string;
   session: CodeSessionView | null;
   sessions: CodeSessionView[];
+  archivedSessions: CodeSessionView[];
   models: CodeModelView[];
   runtimeBase: string;
 }
@@ -74,6 +92,9 @@ function CodeWorkspacePage() {
   const initialSession = loader.session ?? loader.sessions[0] ?? null;
   const initialAgent = initialSession?.agent ?? 'claude';
   const [sessions, setSessions] = useState<CodeSessionView[]>(loader.sessions);
+  const [archivedSessions, setArchivedSessions] = useState<CodeSessionView[]>(
+    loader.archivedSessions
+  );
   const [sessionId, setSessionId] = useState<string | null>(
     initialSession?.id ?? null
   );
@@ -85,8 +106,20 @@ function CodeWorkspacePage() {
   );
   const [actionMsg, setActionMsg] = useState<string>('');
   const [newSessionMsg, setNewSessionMsg] = useState<string>('');
+  const [confirmNewSessionOpen, setConfirmNewSessionOpen] = useState(false);
+  const [confirmRestoreSession, setConfirmRestoreSession] =
+    useState<CodeSessionView | null>(null);
+  const [runtimeIssue, setRuntimeIssue] = useState<string>('');
   const [busyAction, setBusyAction] = useState<string>('');
   const [previewNonce, setPreviewNonce] = useState(0);
+  const [restoredSessionIds, setRestoredSessionIds] = useState<
+    Record<string, true>
+  >({});
+  const [restoreGate, setRestoreGate] = useState<{
+    sessionId: string | null;
+    status: 'ready' | 'restoring' | 'error';
+    message: string;
+  }>({ sessionId: null, status: 'ready', message: '' });
   const [terminalElement, setTerminalElement] = useState<HTMLDivElement | null>(
     null
   );
@@ -97,12 +130,65 @@ function CodeWorkspacePage() {
   const currentModel = currentSession?.model || selectedModel;
   const currentRuntimeUserId =
     currentSession?.runtimeUserId ?? loader.runtimeUserId;
+  const sessionRestoreReady = sessionId
+    ? Boolean(restoredSessionIds[sessionId])
+    : true;
+  const restoreInProgress =
+    restoreGate.sessionId === sessionId && restoreGate.status === 'restoring';
+  const terminalSessionId = sessionId && sessionRestoreReady ? sessionId : null;
   const availableModels = models.filter(
     (model) => model.agent === selectedAgent
   );
   const canCreateSession = Boolean(selectedModel && availableModels.length);
   const hasSession = Boolean(sessionId);
-  const controlsDisabled = !hasSession || Boolean(busyAction);
+  const controlsDisabled =
+    !hasSession || Boolean(busyAction) || restoreInProgress;
+  const markSessionRestoreReady = useCallback((id: string) => {
+    setRestoredSessionIds((prev) =>
+      prev[id] ? prev : { ...prev, [id]: true }
+    );
+  }, []);
+  const markSessionRestorePending = useCallback((id: string) => {
+    setRestoredSessionIds((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+  const rememberArchivedSession = useCallback(
+    (session: CodeSessionView | undefined) => {
+      if (session?.status !== 'ended' || !session.archiveKey) return;
+      setArchivedSessions((prev) => upsertArchivedSession(prev, session));
+      markSessionRestorePending(session.id);
+    },
+    [markSessionRestorePending]
+  );
+  const restoreSessionBeforeConnect = useCallback(
+    async (id: string) => {
+      const payload = await runSessionAction(id, 'restore');
+      if (payload.session) {
+        setSessions((prev) => upsertSession(prev, payload.session!));
+      }
+      markSessionRestoreReady(id);
+      setRuntimeIssue('');
+      setPreviewNonce(Date.now());
+      return payload;
+    },
+    [markSessionRestoreReady]
+  );
+  const reportTerminalEvent = useCallback(
+    (event: TerminalConnectionEvent) => {
+      if (!sessionId) return;
+      void apiPost(
+        `/api/code/sessions/${encodeURIComponent(sessionId)}/events`,
+        event
+      ).catch((error) => {
+        console.warn('[code-terminal] failed to report event', error);
+      });
+    },
+    [sessionId]
+  );
 
   const {
     status,
@@ -113,13 +199,108 @@ function CodeWorkspacePage() {
     scrollToBottom,
     enterScrollback,
   } = useTerminalSession({
-    sessionId,
+    sessionId: terminalSessionId,
     container: terminalElement,
     runtimeBase: loader.runtimeBase,
     runtimeUserId: currentRuntimeUserId ?? null,
     agent: currentAgent,
     model: currentModel,
+    onConnectionEvent: reportTerminalEvent,
   });
+  const terminalStatusText = restoreInProgress
+    ? m['code.actions.restoring']()
+    : `${statusLabel(status)}${mode !== 'none' ? ` · ${mode}` : ''}`;
+
+  useEffect(() => {
+    setRuntimeIssue('');
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId || !currentSession) {
+      setRestoreGate({ sessionId: null, status: 'ready', message: '' });
+      return;
+    }
+
+    if (restoredSessionIds[sessionId] || !currentSession.archiveKey) {
+      markSessionRestoreReady(sessionId);
+      setRestoreGate({ sessionId, status: 'ready', message: '' });
+      return;
+    }
+
+    let cancelled = false;
+    const restoringMessage = m['code.actions.restoring']();
+    setRestoreGate({
+      sessionId,
+      status: 'restoring',
+      message: restoringMessage,
+    });
+    setActionMsg(restoringMessage);
+
+    restoreSessionBeforeConnect(sessionId)
+      .then((payload) => {
+        if (cancelled) return;
+        setRestoreGate({ sessionId, status: 'ready', message: '' });
+        setActionMsg(formatActionMessage('restore', payload));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = (err as Error).message || 'restore failed';
+        setRestoreGate({ sessionId, status: 'error', message });
+        setRuntimeIssue(`${m['code.runtime.restore_failed']()} ${message}`);
+        setActionMsg(message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentSession,
+    markSessionRestoreReady,
+    restoreSessionBeforeConnect,
+    restoredSessionIds,
+    sessionId,
+  ]);
+
+  useEffect(() => {
+    if (!sessionId || (status !== 'closed' && status !== 'error')) return;
+    let cancelled = false;
+
+    runSessionAction(sessionId, 'inspect')
+      .then((payload) => {
+        if (cancelled) return;
+        if (payload.session) {
+          setSessions((prev) => upsertSession(prev, payload.session!));
+        }
+        const issue = runtimeIssueFrom(payload);
+        if (issue) {
+          setRuntimeIssue(issue);
+          setActionMsg(issue);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, status]);
+
+  useEffect(() => {
+    if (!terminalSessionId || status !== 'connected' || busyAction) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      runSessionAction(terminalSessionId, 'archive')
+        .then((payload) => {
+          if (cancelled || !payload.session) return;
+          setSessions((prev) => upsertSession(prev, payload.session!));
+        })
+        .catch(() => undefined);
+    }, 60000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [busyAction, status, terminalSessionId]);
 
   const newSession = async () => {
     if (!canCreateSession) {
@@ -133,7 +314,8 @@ function CodeWorkspacePage() {
       const cleanupErrors: string[] = [];
       for (const id of idsToEnd) {
         try {
-          await runSessionAction(id, 'end');
+          const payload = await runSessionAction(id, 'end');
+          rememberArchivedSession(payload.session);
         } catch (error) {
           cleanupErrors.push((error as Error).message || 'cleanup failed');
         }
@@ -145,6 +327,7 @@ function CodeWorkspacePage() {
       });
       setSessions([session]);
       setSessionId(session.id);
+      markSessionRestoreReady(session.id);
       setSelectedAgent(session.agent);
       setSelectedModel(session.model);
       setPreviewNonce(Date.now());
@@ -161,6 +344,22 @@ function CodeWorkspacePage() {
     }
   };
 
+  const requestNewSession = () => {
+    if (sessionId) {
+      setConfirmNewSessionOpen(true);
+      return;
+    }
+    void newSession();
+  };
+
+  const requestRestoreArchivedSession = (session: CodeSessionView) => {
+    if (sessionId) {
+      setConfirmRestoreSession(session);
+      return;
+    }
+    void restoreArchivedSession(session.id);
+  };
+
   const endCurrentSession = async () => {
     if (!sessionId) return;
     const endingId = sessionId;
@@ -168,11 +367,48 @@ function CodeWorkspacePage() {
     setActionMsg(m['code.actions.running']());
     try {
       const payload = await runSessionAction(endingId, 'end');
+      rememberArchivedSession(payload.session);
       setSessions((prev) => prev.filter((session) => session.id !== endingId));
       setSessionId(null);
       setActionMsg(formatActionMessage('end', payload));
     } catch (err) {
       setActionMsg((err as Error).message || 'error');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const restoreArchivedSession = async (archivedSessionId: string) => {
+    setBusyAction('resume');
+    setNewSessionMsg(m['code.actions.running']());
+    setActionMsg(m['code.actions.running']());
+    try {
+      if (sessionId) {
+        const payload = await runSessionAction(sessionId, 'end');
+        rememberArchivedSession(payload.session);
+      }
+
+      const payload = await runSessionAction(archivedSessionId, 'resume');
+      if (!payload.session) throw new Error('Restore failed');
+      const session = payload.session;
+      setArchivedSessions((prev) =>
+        prev.filter((item) => item.id !== session.id)
+      );
+      setSessions([session]);
+      setSessionId(session.id);
+      markSessionRestorePending(session.id);
+      setSelectedAgent(session.agent);
+      setSelectedModel(session.model);
+      setRuntimeIssue('');
+      setPreviewNonce(Date.now());
+      setNewSessionMsg(
+        `${m['code.actions.restoring']()}: ${shortId(session.id)}`
+      );
+      setActionMsg(formatActionMessage('resume', payload));
+    } catch (err) {
+      const message = (err as Error).message || 'error';
+      setNewSessionMsg(message);
+      setActionMsg(message);
     } finally {
       setBusyAction('');
     }
@@ -187,7 +423,47 @@ function CodeWorkspacePage() {
       if (payload.session) {
         setSessions((prev) => upsertSession(prev, payload.session!));
       }
+      if (action === 'restore') {
+        markSessionRestoreReady(sessionId);
+        setRestoreGate({ sessionId, status: 'ready', message: '' });
+        setRuntimeIssue('');
+        setPreviewNonce(Date.now());
+      }
+      if (action === 'inspect') {
+        setRuntimeIssue(runtimeIssueFrom(payload));
+      }
       setActionMsg(formatActionMessage(action, payload));
+    } catch (err) {
+      setActionMsg((err as Error).message || 'error');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const reconnectTerminal = async () => {
+    if (!sessionId) return;
+    setBusyAction('inspect');
+    setActionMsg(m['code.actions.running']());
+    try {
+      const payload = await runSessionAction(sessionId, 'inspect');
+      if (payload.session) {
+        setSessions((prev) => upsertSession(prev, payload.session!));
+      }
+      const issue = runtimeIssueFrom(payload);
+      if (issue) {
+        if (currentSession?.archiveKey) {
+          const restorePayload = await restoreSessionBeforeConnect(sessionId);
+          setRestoreGate({ sessionId, status: 'ready', message: '' });
+          setActionMsg(formatActionMessage('restore', restorePayload));
+        } else {
+          setRuntimeIssue(issue);
+          setActionMsg(issue);
+          return;
+        }
+      }
+      setRuntimeIssue('');
+      setActionMsg('');
+      reconnect();
     } catch (err) {
       setActionMsg((err as Error).message || 'error');
     } finally {
@@ -235,8 +511,10 @@ function CodeWorkspacePage() {
               size="icon"
               className="size-8 rounded-full"
               aria-label={m['code.sessions.new']()}
-              disabled={Boolean(busyAction) || !canCreateSession}
-              onClick={() => void newSession()}
+              disabled={
+                Boolean(busyAction) || restoreInProgress || !canCreateSession
+              }
+              onClick={requestNewSession}
             >
               <Plus className="size-4" />
             </Button>
@@ -348,6 +626,46 @@ function CodeWorkspacePage() {
             ))}
           </div>
 
+          <div className="border-border mt-6 border-t pt-5">
+            <div className="mb-3 flex items-center gap-2 text-xs font-medium">
+              <History className="text-muted-foreground size-3.5" />
+              {m['code.sessions.archived_title']()}
+            </div>
+            <div className="space-y-2">
+              {archivedSessions.length === 0 && (
+                <p className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">
+                  {m['code.sessions.archived_empty']()}
+                </p>
+              )}
+              {archivedSessions.map((session) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  className="hover:bg-muted/70 flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={Boolean(busyAction) || restoreInProgress}
+                  onClick={() => requestRestoreArchivedSession(session)}
+                >
+                  <span className="border-muted-foreground/40 size-2 rounded-full border" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-mono text-xs">
+                      {session.id}
+                    </span>
+                    <span className="text-muted-foreground mt-0.5 flex items-center gap-1 text-[11px]">
+                      <Archive className="size-3" />
+                      {agentLabel(session.agent)}
+                    </span>
+                    <span className="text-muted-foreground mt-0.5 block truncate text-[11px]">
+                      {modelLabel(models, session)}
+                    </span>
+                  </span>
+                  <span className="text-primary shrink-0 text-[11px] font-medium">
+                    {m['code.sessions.restore']()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="border-border mt-6 rounded-lg border p-3">
             <div className="mb-3 flex items-center gap-2 text-sm font-medium">
               <Cloud className="text-primary size-4" />
@@ -389,8 +707,7 @@ function CodeWorkspacePage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-xs">
-                  {statusLabel(status)}
-                  {mode !== 'none' ? ` · ${mode}` : ''}
+                  {terminalStatusText}
                 </span>
                 <span
                   className={cn(
@@ -406,7 +723,7 @@ function CodeWorkspacePage() {
                   size="icon"
                   variant="ghost"
                   className="size-7 rounded-full"
-                  disabled={!sessionId}
+                  disabled={!terminalSessionId}
                   aria-label={m['code.terminal.focus']()}
                   title={m['code.terminal.focus']()}
                   onClick={focusTerminal}
@@ -417,7 +734,7 @@ function CodeWorkspacePage() {
                   size="icon"
                   variant="ghost"
                   className="size-7 rounded-full"
-                  disabled={!sessionId}
+                  disabled={!terminalSessionId}
                   aria-label={m['code.terminal.scrollback']()}
                   title={m['code.terminal.scrollback']()}
                   onClick={enterScrollback}
@@ -428,7 +745,7 @@ function CodeWorkspacePage() {
                   size="icon"
                   variant="ghost"
                   className="size-7 rounded-full"
-                  disabled={!sessionId}
+                  disabled={!terminalSessionId}
                   aria-label={m['code.terminal.bottom']()}
                   title={m['code.terminal.bottom']()}
                   onClick={scrollToBottom}
@@ -440,8 +757,10 @@ function CodeWorkspacePage() {
                   size="sm"
                   variant="outline"
                   className="h-7 rounded-full text-xs"
-                  disabled={!sessionId}
-                  onClick={reconnect}
+                  disabled={
+                    !sessionId || Boolean(busyAction) || restoreInProgress
+                  }
+                  onClick={() => void reconnectTerminal()}
                 >
                   {m['code.terminal.reconnect']()}
                 </Button>
@@ -461,6 +780,16 @@ function CodeWorkspacePage() {
               {!sessionId && (
                 <div className="absolute inset-0 flex items-center justify-center bg-[#17130f] px-6 text-center text-sm text-[#f4eadf]/70">
                   {m['code.sessions.empty']()}
+                </div>
+              )}
+              {sessionId && restoreInProgress && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#17130f] px-6 text-center text-sm text-[#f4eadf]/70">
+                  {restoreGate.message || m['code.actions.restoring']()}
+                </div>
+              )}
+              {sessionId && runtimeIssue && (
+                <div className="absolute inset-x-4 top-4 rounded-md border border-red-500/40 bg-red-950/85 px-4 py-3 text-sm text-red-50 shadow-lg">
+                  {runtimeIssue}
                 </div>
               )}
             </div>
@@ -484,15 +813,21 @@ function CodeWorkspacePage() {
             >
               <div className="border-border bg-background overflow-hidden rounded-md border">
                 {sessionId ? (
-                  <iframe
-                    title="preview"
-                    className="h-56 w-full"
-                    src={`${previewUrl(
-                      loader.runtimeBase,
-                      currentRuntimeUserId,
-                      sessionId
-                    )}?t=${previewNonce}`}
-                  />
+                  terminalSessionId ? (
+                    <iframe
+                      title="preview"
+                      className="h-56 w-full"
+                      src={`${previewUrl(
+                        loader.runtimeBase,
+                        currentRuntimeUserId,
+                        terminalSessionId
+                      )}?t=${previewNonce}`}
+                    />
+                  ) : (
+                    <div className="text-muted-foreground flex h-56 items-center justify-center px-4 text-center text-xs">
+                      {restoreGate.message || m['code.actions.restoring']()}
+                    </div>
+                  )
                 ) : (
                   <div className="text-muted-foreground flex h-56 items-center justify-center px-4 text-center text-xs">
                     {m['code.preview.empty']()}
@@ -503,7 +838,7 @@ function CodeWorkspacePage() {
                 size="sm"
                 variant="outline"
                 className="mt-3 h-7 rounded-full text-xs"
-                disabled={!sessionId}
+                disabled={!terminalSessionId}
                 onClick={() => setPreviewNonce(Date.now())}
               >
                 {m['code.actions.refresh_preview']()}
@@ -524,6 +859,15 @@ function CodeWorkspacePage() {
                   onClick={() => void runAction('health')}
                 >
                   {m['code.actions.health']()}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  disabled={controlsDisabled}
+                  onClick={() => void runAction('inspect')}
+                >
+                  {m['code.actions.inspect']()}
                 </Button>
                 <Button
                   size="sm"
@@ -561,6 +905,80 @@ function CodeWorkspacePage() {
           </div>
         </section>
       </main>
+
+      <Dialog
+        open={confirmNewSessionOpen}
+        onOpenChange={setConfirmNewSessionOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{m['code.sessions.new_confirm_title']()}</DialogTitle>
+            <DialogDescription>
+              {m['code.sessions.new_confirm_description']()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmNewSessionOpen(false)}
+            >
+              {m['code.sessions.new_confirm_cancel']()}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setConfirmNewSessionOpen(false);
+                void newSession();
+              }}
+            >
+              {m['code.sessions.new_confirm_confirm']()}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(confirmRestoreSession)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRestoreSession(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {m['code.sessions.restore_confirm_title']()}
+            </DialogTitle>
+            <DialogDescription>
+              {m['code.sessions.restore_confirm_description']()}
+            </DialogDescription>
+          </DialogHeader>
+          {confirmRestoreSession && (
+            <p className="text-muted-foreground rounded-md border px-3 py-2 font-mono text-xs">
+              {confirmRestoreSession.id}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmRestoreSession(null)}
+            >
+              {m['code.sessions.restore_confirm_cancel']()}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const session = confirmRestoreSession;
+                setConfirmRestoreSession(null);
+                if (session) void restoreArchivedSession(session.id);
+              }}
+            >
+              {m['code.sessions.restore_confirm_confirm']()}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -578,6 +996,15 @@ function upsertSession(sessions: CodeSessionView[], session: CodeSessionView) {
   return [session, ...rest].slice(0, 10);
 }
 
+function upsertArchivedSession(
+  sessions: CodeSessionView[],
+  session: CodeSessionView
+) {
+  const rest = sessions.filter((item) => item.id !== session.id);
+  if (session.status !== 'ended' || !session.archiveKey) return rest;
+  return [session, ...rest].slice(0, 20);
+}
+
 function shortId(sessionId: string) {
   return sessionId.length > 18 ? `${sessionId.slice(0, 18)}...` : sessionId;
 }
@@ -591,10 +1018,18 @@ function formatActionMessage(action: CodeAction, payload: CodeActionResponse) {
     );
   }
 
+  if (action === 'inspect') {
+    return runtimeIssueFrom(payload) || m['code.runtime.available']();
+  }
+
   if (action === 'end') {
     return payload.archiveError
       ? `${m['code.actions.ended']()}: ${payload.archiveError}`
       : m['code.actions.ended']();
+  }
+
+  if (action === 'resume') {
+    return m['code.actions.restore_started']();
   }
 
   const detail =
@@ -607,6 +1042,21 @@ function formatActionMessage(action: CodeAction, payload: CodeActionResponse) {
 
   if (digest) return `${action}: ${digest.slice(0, 12)}...`;
   return `${action}: ok`;
+}
+
+function runtimeIssueFrom(payload: CodeActionResponse) {
+  const tmuxExists = booleanField(payload.tmuxStatus, 'exists');
+  const workspaceExists = booleanField(payload.workspace, 'exists');
+  if (tmuxExists === false || workspaceExists === false) {
+    return m['code.runtime.lost']();
+  }
+  return '';
+}
+
+function booleanField(payload: unknown, field: string) {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as Record<string, unknown>)[field];
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 function digestFrom(payload: unknown) {
@@ -701,7 +1151,8 @@ function Panel({
 const getCodeSession = createServerFn().handler(async () => {
   const { getRequest } = await import('@tanstack/react-start/server');
   const { getAuth } = await import('@/core/auth');
-  const { listSessions } = await import('@/modules/code/service');
+  const { listArchivedSessions, listSessions } =
+    await import('@/modules/code/service');
   const { listEnabledCodeModels } = await import('@/modules/code/models');
   const { sanitizeUserId } = await import('@/modules/code/runtime');
 
@@ -710,6 +1161,7 @@ const getCodeSession = createServerFn().handler(async () => {
   if (!session?.user) return null;
 
   const sessions = await listSessions(session.user.id);
+  const archivedSessions = await listArchivedSessions(session.user.id);
   const activeSession = sessions[0] ?? null;
   const models = await listEnabledCodeModels();
 
@@ -718,6 +1170,7 @@ const getCodeSession = createServerFn().handler(async () => {
       activeSession?.runtimeUserId ?? sanitizeUserId(session.user.id),
     session: activeSession,
     sessions,
+    archivedSessions,
     models,
   };
 });
