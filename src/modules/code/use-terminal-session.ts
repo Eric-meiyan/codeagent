@@ -188,11 +188,13 @@ export function useTerminalSession({
   }, []);
 
   const enterScrollback = useCallback(() => {
-    // tmux copy-mode is the reliable scrollback path for full-screen TUIs.
-    sendInput('\x02[');
+    const term = termRef.current;
+    if (term) {
+      term.scrollLines(-Math.max(term.rows - 2, 1));
+    }
     termRef.current?.focus();
     setFocused(Boolean(termRef.current));
-  }, [sendInput]);
+  }, []);
 
   const connect = useCallback(() => {
     if (socketRef.current) {
