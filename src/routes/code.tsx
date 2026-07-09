@@ -67,7 +67,9 @@ type CodeAction =
 interface CodeActionResponse {
   session?: CodeSessionView;
   archive?: Record<string, unknown> | null;
+  archiveStatus?: Record<string, unknown> | null;
   restore?: Record<string, unknown>;
+  restoreIntegrity?: Record<string, unknown> | null;
   clear?: Record<string, unknown>;
   tmuxStatus?: Record<string, unknown>;
   workspace?: Record<string, unknown>;
@@ -79,6 +81,21 @@ interface CodeActionResponse {
   codexConfigured?: boolean;
   ok?: boolean;
   [key: string]: unknown;
+}
+
+type ArchiveCheckpointState =
+  | 'idle'
+  | 'saving'
+  | 'saved'
+  | 'verified'
+  | 'error';
+
+interface ArchiveCheckpoint {
+  sessionId: string | null;
+  state: ArchiveCheckpointState;
+  savedAt?: string;
+  digest?: string;
+  message?: string;
 }
 
 interface CodeLoaderData {
@@ -123,6 +140,9 @@ function CodeWorkspacePage() {
     status: 'ready' | 'restoring' | 'error';
     message: string;
   }>({ sessionId: null, status: 'ready', message: '' });
+  const [archiveCheckpoint, setArchiveCheckpoint] = useState<ArchiveCheckpoint>(
+    () => checkpointFromSession(initialSession)
+  );
   const [terminalElement, setTerminalElement] = useState<HTMLDivElement | null>(
     null
   );
@@ -159,6 +179,65 @@ function CodeWorkspacePage() {
       return next;
     });
   }, []);
+  const markArchiveSaving = useCallback((id: string) => {
+    setArchiveCheckpoint((prev) => ({
+      sessionId: id,
+      state: 'saving',
+      savedAt: prev.sessionId === id ? prev.savedAt : undefined,
+      digest: prev.sessionId === id ? prev.digest : undefined,
+    }));
+  }, []);
+  const markArchiveSaved = useCallback(
+    (id: string, payload: CodeActionResponse) => {
+      const status = objectField(payload, 'archiveStatus');
+      const savedAt =
+        stringField(status, 'savedAt') ||
+        payload.session?.lastActiveAt ||
+        new Date().toISOString();
+      const digest =
+        stringField(status, 'digest') ||
+        digestFrom(payload.archive) ||
+        payload.session?.archiveDigest ||
+        '';
+
+      setArchiveCheckpoint({
+        sessionId: id,
+        state: 'saved',
+        savedAt,
+        digest,
+      });
+    },
+    []
+  );
+  const markArchiveError = useCallback((id: string, error: unknown) => {
+    const message = (error as Error).message || 'archive failed';
+    setArchiveCheckpoint((prev) => ({
+      sessionId: id,
+      state: 'error',
+      savedAt: prev.sessionId === id ? prev.savedAt : undefined,
+      digest: prev.sessionId === id ? prev.digest : undefined,
+      message,
+    }));
+  }, []);
+  const markRestoreIntegrity = useCallback(
+    (id: string, payload: CodeActionResponse) => {
+      const integrity = objectField(payload, 'restoreIntegrity');
+      const state = stringField(integrity, 'state');
+      if (state !== 'verified') return;
+
+      setArchiveCheckpoint({
+        sessionId: id,
+        state: 'verified',
+        savedAt: payload.session?.lastActiveAt,
+        digest:
+          stringField(integrity, 'restoredDigest') ||
+          stringField(integrity, 'expectedDigest') ||
+          payload.session?.archiveDigest ||
+          '',
+      });
+    },
+    []
+  );
   const rememberArchivedSession = useCallback(
     (session: CodeSessionView | undefined) => {
       if (
@@ -180,11 +259,12 @@ function CodeWorkspacePage() {
         setSessions((prev) => upsertSession(prev, payload.session!));
       }
       markSessionRestoreReady(id);
+      markRestoreIntegrity(id, payload);
       setRuntimeIssue('');
       setPreviewNonce(Date.now());
       return payload;
     },
-    [markSessionRestoreReady]
+    [markRestoreIntegrity, markSessionRestoreReady]
   );
   const reportTerminalEvent = useCallback(
     (event: TerminalConnectionEvent) => {
@@ -219,10 +299,33 @@ function CodeWorkspacePage() {
   const terminalStatusText = restoreInProgress
     ? m['code.actions.restoring']()
     : `${statusLabel(status)}${mode !== 'none' ? ` · ${mode}` : ''}`;
+  const archiveDigest = archiveDigestForSession(
+    currentSession,
+    archiveCheckpoint
+  );
 
   useEffect(() => {
     setRuntimeIssue('');
   }, [sessionId]);
+
+  useEffect(() => {
+    setArchiveCheckpoint((prev) => {
+      if (
+        prev.sessionId === sessionId &&
+        (prev.state === 'saving' ||
+          prev.state === 'error' ||
+          prev.state === 'verified')
+      ) {
+        return prev;
+      }
+      return checkpointFromSession(currentSession);
+    });
+  }, [
+    currentSession?.archiveDigest,
+    currentSession?.archiveKey,
+    currentSession?.lastActiveAt,
+    sessionId,
+  ]);
 
   useEffect(() => {
     if (!sessionId || !currentSession) {
@@ -297,19 +400,30 @@ function CodeWorkspacePage() {
     if (!terminalSessionId || status !== 'connected' || busyAction) return;
     let cancelled = false;
     const timer = window.setInterval(() => {
+      markArchiveSaving(terminalSessionId);
       runSessionAction(terminalSessionId, 'archive')
         .then((payload) => {
           if (cancelled || !payload.session) return;
           setSessions((prev) => upsertSession(prev, payload.session!));
+          markArchiveSaved(terminalSessionId, payload);
         })
-        .catch(() => undefined);
+        .catch((error) => {
+          if (!cancelled) markArchiveError(terminalSessionId, error);
+        });
     }, 60000);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [busyAction, status, terminalSessionId]);
+  }, [
+    busyAction,
+    markArchiveError,
+    markArchiveSaved,
+    markArchiveSaving,
+    status,
+    terminalSessionId,
+  ]);
 
   const newSession = async (
     currentAction: 'suspend' | 'discard' = 'suspend'
@@ -340,6 +454,7 @@ function CodeWorkspacePage() {
       });
       setSessions([session]);
       setSessionId(session.id);
+      setArchiveCheckpoint(checkpointFromSession(session));
       markSessionRestoreReady(session.id);
       setSelectedAgent(session.agent);
       setSelectedModel(session.model);
@@ -409,6 +524,7 @@ function CodeWorkspacePage() {
       );
       setSessions([session]);
       setSessionId(session.id);
+      setArchiveCheckpoint(checkpointFromSession(session));
       markSessionRestorePending(session.id);
       setSelectedAgent(session.agent);
       setSelectedModel(session.model);
@@ -431,6 +547,9 @@ function CodeWorkspacePage() {
     if (!sessionId) return;
     setBusyAction(action);
     setActionMsg(m['code.actions.running']());
+    if (action === 'archive') {
+      markArchiveSaving(sessionId);
+    }
     try {
       const payload = await runSessionAction(sessionId, action);
       if (action === 'suspend') {
@@ -442,8 +561,12 @@ function CodeWorkspacePage() {
       } else if (payload.session) {
         setSessions((prev) => upsertSession(prev, payload.session!));
       }
+      if (action === 'archive') {
+        markArchiveSaved(sessionId, payload);
+      }
       if (action === 'restore') {
         markSessionRestoreReady(sessionId);
+        markRestoreIntegrity(sessionId, payload);
         setRestoreGate({ sessionId, status: 'ready', message: '' });
         setRuntimeIssue('');
         setPreviewNonce(Date.now());
@@ -453,6 +576,9 @@ function CodeWorkspacePage() {
       }
       setActionMsg(formatActionMessage(action, payload));
     } catch (err) {
+      if (action === 'archive') {
+        markArchiveError(sessionId, err);
+      }
       setActionMsg((err as Error).message || 'error');
     } finally {
       setBusyAction('');
@@ -718,7 +844,7 @@ function CodeWorkspacePage() {
               />
               <Metric
                 label={m['code.runtime.archive']()}
-                value={currentSession?.archiveKey ? 'R2 saved' : 'R2'}
+                value={archiveMetricValue(currentSession, archiveCheckpoint)}
               />
             </div>
           </div>
@@ -878,6 +1004,45 @@ function CodeWorkspacePage() {
               title={m['code.archive.title']()}
               subtitle={m['code.archive.subtitle']()}
             >
+              <div className="border-primary/50 mb-3 border-l-2 pl-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium">
+                      {m['code.archive.status']()}
+                    </p>
+                    <p
+                      className={cn(
+                        'mt-1 text-xs leading-5',
+                        archiveCheckpoint.sessionId === sessionId &&
+                          archiveCheckpoint.state === 'error'
+                          ? 'text-destructive'
+                          : 'text-muted-foreground'
+                      )}
+                    >
+                      {archiveStatusText(currentSession, archiveCheckpoint)}
+                    </p>
+                    {archiveDigest && (
+                      <p className="text-muted-foreground mt-1 truncate font-mono text-[11px]">
+                        {m['code.archive.digest']({
+                          digest: shortDigest(archiveDigest),
+                        })}
+                      </p>
+                    )}
+                  </div>
+                  {archiveCheckpoint.sessionId === sessionId &&
+                    archiveCheckpoint.state === 'error' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 shrink-0 rounded-full text-xs"
+                        disabled={controlsDisabled}
+                        onClick={() => void runAction('archive')}
+                      >
+                        {m['code.archive.retry']()}
+                      </Button>
+                    )}
+                </div>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
@@ -1144,11 +1309,124 @@ function digestFrom(payload: unknown) {
   return typeof value === 'string' ? value : '';
 }
 
+function objectField(payload: unknown, field: string) {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as Record<string, unknown>)[field];
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function stringField(payload: unknown, field: string) {
+  if (!payload || typeof payload !== 'object') return '';
+  const value = (payload as Record<string, unknown>)[field];
+  return typeof value === 'string' ? value : '';
+}
+
+function checkpointFromSession(
+  session: CodeSessionView | null | undefined
+): ArchiveCheckpoint {
+  if (!session) return { sessionId: null, state: 'idle' };
+  if (!session.archiveKey) {
+    return { sessionId: session.id, state: 'idle' };
+  }
+  return {
+    sessionId: session.id,
+    state: 'saved',
+    savedAt: session.lastActiveAt,
+    digest: session.archiveDigest || undefined,
+  };
+}
+
+function archiveDigestForSession(
+  session: CodeSessionView | null,
+  checkpoint: ArchiveCheckpoint
+) {
+  if (session && checkpoint.sessionId === session.id && checkpoint.digest) {
+    return checkpoint.digest;
+  }
+  return session?.archiveDigest || '';
+}
+
+function archiveMetricValue(
+  session: CodeSessionView | null,
+  checkpoint: ArchiveCheckpoint
+) {
+  if (session && checkpoint.sessionId === session.id) {
+    if (checkpoint.state === 'saving') return m['code.archive.saving_short']();
+    if (checkpoint.state === 'error') return m['code.archive.error_short']();
+    if (checkpoint.state === 'verified') {
+      return m['code.archive.verified_short']();
+    }
+    if (checkpoint.state === 'saved') return m['code.archive.saved_short']();
+  }
+  return session?.archiveKey
+    ? m['code.archive.saved_short']()
+    : m['code.archive.unavailable_short']();
+}
+
+function archiveStatusText(
+  session: CodeSessionView | null,
+  checkpoint: ArchiveCheckpoint
+) {
+  if (!session) return m['code.sessions.empty']();
+  if (checkpoint.sessionId === session.id) {
+    if (checkpoint.state === 'saving') return m['code.archive.saving']();
+    if (checkpoint.state === 'error') {
+      return m['code.archive.failed']({
+        message: checkpoint.message || 'unknown',
+      });
+    }
+    if (checkpoint.state === 'verified') return m['code.archive.verified']();
+    if (checkpoint.state === 'saved') {
+      return m['code.archive.saved']({
+        time: checkpoint.savedAt
+          ? relativeTime(checkpoint.savedAt)
+          : m['code.archive.just_now'](),
+      });
+    }
+  }
+  if (session.archiveKey) {
+    return m['code.archive.saved']({
+      time: relativeTime(session.lastActiveAt),
+    });
+  }
+  return m['code.archive.unavailable']();
+}
+
+function relativeTime(value: string) {
+  const date = new Date(value);
+  const timestamp = date.getTime();
+  if (!Number.isFinite(timestamp)) return m['code.archive.just_now']();
+
+  const deltaSeconds = Math.round((timestamp - Date.now()) / 1000);
+  const absSeconds = Math.abs(deltaSeconds);
+  const formatter = new Intl.RelativeTimeFormat(undefined, {
+    numeric: 'auto',
+  });
+
+  if (absSeconds < 60) return formatter.format(deltaSeconds, 'second');
+  const deltaMinutes = Math.round(deltaSeconds / 60);
+  if (Math.abs(deltaMinutes) < 60) {
+    return formatter.format(deltaMinutes, 'minute');
+  }
+  const deltaHours = Math.round(deltaMinutes / 60);
+  if (Math.abs(deltaHours) < 24) {
+    return formatter.format(deltaHours, 'hour');
+  }
+  const deltaDays = Math.round(deltaHours / 24);
+  return formatter.format(deltaDays, 'day');
+}
+
+function shortDigest(digest: string) {
+  return digest.length > 16 ? `${digest.slice(0, 16)}...` : digest;
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+      <span className="truncate text-right font-medium">{value}</span>
     </div>
   );
 }

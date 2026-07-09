@@ -11,6 +11,7 @@
     "precf:build": "node scripts/db-setup.mjs",
     "cf:build": "NITRO_PRESET=cloudflare_module vite build",
     "cf:deploy": "sh -c 'set -a && [ -f .env.production ] && . ./.env.production; set +a && pnpm cf:build && exec wrangler deploy'",
+    "code:lifecycle": "node scripts/code-session-lifecycle-smoke.mjs",
     "postinstall": "mkdir -p data && (test -f src/config/db/schema.ts || node scripts/db-setup.mjs)",
     "db:setup": "node scripts/db-setup.mjs",
     "db:push": "tsx scripts/with-env.ts drizzle-kit push --config=drizzle.config.ts",

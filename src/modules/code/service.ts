@@ -47,6 +47,23 @@ export interface RuntimeActionResult {
   [key: string]: unknown;
 }
 
+interface ArchiveStatus {
+  state: 'saved';
+  savedAt: string;
+  digest: string;
+  key: string;
+  eventKind: string;
+  recordedEvent: boolean;
+  bytes?: number;
+  files?: number;
+}
+
+interface RestoreIntegrity {
+  state: 'verified' | 'mismatch' | 'unknown' | 'untracked';
+  expectedDigest: string;
+  restoredDigest: string;
+}
+
 type CodeSessionEventSeverity = 'info' | 'warn' | 'error';
 type CodeSessionEventSource = 'app' | 'browser' | 'runtime';
 
@@ -342,6 +359,33 @@ function digestFromArchive(archive?: RuntimeActionResult | null) {
   return typeof digest === 'string' ? digest : undefined;
 }
 
+function objectField(payload: unknown, field: string) {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as Record<string, unknown>)[field];
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function digestFromRestore(restore?: RuntimeActionResult | null) {
+  const directDigest = digestFromArchive(restore);
+  if (directDigest) return directDigest;
+
+  const restored = objectField(restore, 'restored');
+  const restoredDigest = digestFromArchive(
+    restored as RuntimeActionResult | undefined
+  );
+  if (restoredDigest) return restoredDigest;
+
+  const workspace = objectField(restore, 'workspace');
+  const workspaceDigest = stringField(workspace, 'digest');
+  if (workspaceDigest) return workspaceDigest;
+
+  const objectMetadata = objectField(restore, 'objectMetadata');
+  const metadataDigest = stringField(objectMetadata, 'workspaceDigest');
+  return metadataDigest || undefined;
+}
+
 export async function recordCodeSessionEvent({
   userId,
   sessionId,
@@ -556,6 +600,30 @@ function archiveMetadata(archive?: RuntimeActionResult | null) {
   };
 }
 
+function archiveStatusFromResult(
+  session: CodeSessionView,
+  archive: RuntimeActionResult,
+  eventKind: string | null
+): ArchiveStatus {
+  const metadata = archiveMetadata(archive);
+  return {
+    state: 'saved',
+    savedAt: session.lastActiveAt,
+    digest:
+      (typeof metadata.digest === 'string' ? metadata.digest : '') ||
+      session.archiveDigest ||
+      '',
+    key:
+      (typeof metadata.key === 'string' ? metadata.key : '') ||
+      session.archiveKey ||
+      '',
+    eventKind: eventKind || 'unchanged',
+    recordedEvent: Boolean(eventKind),
+    bytes: typeof metadata.bytes === 'number' ? metadata.bytes : undefined,
+    files: typeof metadata.files === 'number' ? metadata.files : undefined,
+  };
+}
+
 function archiveEventKind(
   row: CodeSession,
   archive?: RuntimeActionResult | null
@@ -564,6 +632,24 @@ function archiveEventKind(
   if (!row.archiveKey) return 'first';
   if (digest && digest !== row.archiveDigest) return 'digest_changed';
   return null;
+}
+
+function restoreIntegrityFromResult(
+  row: CodeSession,
+  restore?: RuntimeActionResult | null
+): RestoreIntegrity {
+  const expectedDigest = row.archiveDigest || '';
+  const restoredDigest = digestFromRestore(restore) || '';
+  if (!expectedDigest) {
+    return { state: 'untracked', expectedDigest, restoredDigest };
+  }
+  if (!restoredDigest) {
+    return { state: 'unknown', expectedDigest, restoredDigest };
+  }
+  if (restoredDigest !== expectedDigest) {
+    return { state: 'mismatch', expectedDigest, restoredDigest };
+  }
+  return { state: 'verified', expectedDigest, restoredDigest };
 }
 
 function booleanField(payload: unknown, field: string) {
@@ -721,6 +807,7 @@ export async function archiveSession(userId: string, sessionId: string) {
     );
     const eventKind = archiveEventKind(row, archive);
     const session = await recordArchive(userId, sessionId, archive);
+    const archiveStatus = archiveStatusFromResult(session, archive, eventKind);
     if (eventKind) {
       await recordCodeSessionEvent({
         userId,
@@ -742,7 +829,7 @@ export async function archiveSession(userId: string, sessionId: string) {
       });
     }
 
-    return { session, archive };
+    return { session, archive, archiveStatus };
   } catch (error) {
     await recordCodeSessionEvent({
       userId,
@@ -772,7 +859,42 @@ export async function restoreSession(userId: string, sessionId: string) {
       normalizeAgent(row.agent),
       row.model
     );
+    const restoreIntegrity = restoreIntegrityFromResult(row, restore);
+    if (restoreIntegrity.state === 'mismatch') {
+      await recordCodeSessionEvent({
+        userId,
+        sessionId,
+        runtimeUserId: row.runtimeUserId,
+        agent: row.agent,
+        model: row.model,
+        eventType: 'session.restore.integrity_failed',
+        severity: 'error',
+        message: 'Restored workspace digest mismatch',
+        metadata: {
+          restoreIntegrity,
+          restore: pickRuntimeFields(restore),
+        },
+      });
+      throw new Error('Restored workspace digest mismatch');
+    }
+
     const session = await touchSession(userId, sessionId);
+    if (restoreIntegrity.state === 'unknown') {
+      await recordCodeSessionEvent({
+        userId,
+        sessionId,
+        runtimeUserId: row.runtimeUserId,
+        agent: row.agent,
+        model: row.model,
+        eventType: 'session.restore.integrity_unknown',
+        severity: 'warn',
+        message: 'Restored workspace digest was not reported',
+        metadata: {
+          restoreIntegrity,
+          restore: pickRuntimeFields(restore),
+        },
+      });
+    }
     await recordCodeSessionEvent({
       userId,
       sessionId,
@@ -781,10 +903,13 @@ export async function restoreSession(userId: string, sessionId: string) {
       model: row.model,
       eventType: 'session.restore',
       message: 'Workspace restored',
-      metadata: pickRuntimeFields(restore),
+      metadata: {
+        ...pickRuntimeFields(restore),
+        restoreIntegrity,
+      },
     });
 
-    return { session, restore };
+    return { session, restore, restoreIntegrity };
   } catch (error) {
     await recordCodeSessionEvent({
       userId,
