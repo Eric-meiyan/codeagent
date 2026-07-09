@@ -60,6 +60,7 @@ type CodeAction =
   | 'archive'
   | 'restore'
   | 'resume'
+  | 'suspend'
   | 'end';
 
 interface CodeActionResponse {
@@ -70,6 +71,7 @@ interface CodeActionResponse {
   tmuxStatus?: Record<string, unknown>;
   workspace?: Record<string, unknown>;
   archiveError?: string | null;
+  clearError?: string | null;
   tmux?: string;
   claude?: string;
   codex?: string;
@@ -158,7 +160,13 @@ function CodeWorkspacePage() {
   }, []);
   const rememberArchivedSession = useCallback(
     (session: CodeSessionView | undefined) => {
-      if (session?.status !== 'ended' || !session.archiveKey) return;
+      if (
+        !session ||
+        (session.status !== 'ended' && session.status !== 'suspended') ||
+        !session.archiveKey
+      ) {
+        return;
+      }
       setArchivedSessions((prev) => upsertArchivedSession(prev, session));
       markSessionRestorePending(session.id);
     },
@@ -314,7 +322,7 @@ function CodeWorkspacePage() {
       const cleanupErrors: string[] = [];
       for (const id of idsToEnd) {
         try {
-          const payload = await runSessionAction(id, 'end');
+          const payload = await runSessionAction(id, 'suspend');
           rememberArchivedSession(payload.session);
         } catch (error) {
           cleanupErrors.push((error as Error).message || 'cleanup failed');
@@ -384,7 +392,7 @@ function CodeWorkspacePage() {
     setActionMsg(m['code.actions.running']());
     try {
       if (sessionId) {
-        const payload = await runSessionAction(sessionId, 'end');
+        const payload = await runSessionAction(sessionId, 'suspend');
         rememberArchivedSession(payload.session);
       }
 
@@ -420,7 +428,13 @@ function CodeWorkspacePage() {
     setActionMsg(m['code.actions.running']());
     try {
       const payload = await runSessionAction(sessionId, action);
-      if (payload.session) {
+      if (action === 'suspend') {
+        rememberArchivedSession(payload.session);
+        setSessions((prev) =>
+          prev.filter((session) => session.id !== sessionId)
+        );
+        setSessionId(null);
+      } else if (payload.session) {
         setSessions((prev) => upsertSession(prev, payload.session!));
       }
       if (action === 'restore') {
@@ -652,6 +666,7 @@ function CodeWorkspacePage() {
                     </span>
                     <span className="text-muted-foreground mt-0.5 flex items-center gap-1 text-[11px]">
                       <Archive className="size-3" />
+                      {sessionStatusLabel(session.status)} ·{' '}
                       {agentLabel(session.agent)}
                     </span>
                     <span className="text-muted-foreground mt-0.5 block truncate text-[11px]">
@@ -675,6 +690,14 @@ function CodeWorkspacePage() {
               <Metric
                 label={m['code.runtime.sandbox']()}
                 value={m['code.runtime.ready']()}
+              />
+              <Metric
+                label={m['code.runtime.session_status']()}
+                value={
+                  currentSession
+                    ? sessionStatusLabel(currentSession.status)
+                    : m['code.sessions.empty']()
+                }
               />
               <Metric
                 label={m['code.agent.current']()}
@@ -889,6 +912,15 @@ function CodeWorkspacePage() {
                 </Button>
                 <Button
                   size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-xs"
+                  disabled={controlsDisabled}
+                  onClick={() => void runAction('suspend')}
+                >
+                  {m['code.actions.suspend']()}
+                </Button>
+                <Button
+                  size="sm"
                   variant="destructive"
                   className="h-7 rounded-full text-xs"
                   disabled={controlsDisabled}
@@ -1001,7 +1033,12 @@ function upsertArchivedSession(
   session: CodeSessionView
 ) {
   const rest = sessions.filter((item) => item.id !== session.id);
-  if (session.status !== 'ended' || !session.archiveKey) return rest;
+  if (
+    (session.status !== 'ended' && session.status !== 'suspended') ||
+    !session.archiveKey
+  ) {
+    return rest;
+  }
   return [session, ...rest].slice(0, 20);
 }
 
@@ -1026,6 +1063,12 @@ function formatActionMessage(action: CodeAction, payload: CodeActionResponse) {
     return payload.archiveError
       ? `${m['code.actions.ended']()}: ${payload.archiveError}`
       : m['code.actions.ended']();
+  }
+
+  if (action === 'suspend') {
+    return payload.archiveError || payload.clearError
+      ? `${m['code.actions.suspended']()}: ${payload.archiveError || payload.clearError}`
+      : m['code.actions.suspended']();
   }
 
   if (action === 'resume') {
@@ -1102,6 +1145,21 @@ function modelLabel(
   if (!modelId) return m['code.model.unselected']();
   const model = models.find((item) => item.model === modelId);
   return model?.label || modelId;
+}
+
+function sessionStatusLabel(status: CodeSessionView['status']) {
+  switch (status) {
+    case 'active':
+      return m['code.session_status.active']();
+    case 'suspended':
+      return m['code.session_status.suspended']();
+    case 'ended':
+      return m['code.session_status.ended']();
+    case 'error':
+      return m['code.session_status.error']();
+    default:
+      return status;
+  }
 }
 
 function statusLabel(status: TerminalStatus): string {

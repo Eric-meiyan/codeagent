@@ -11,6 +11,7 @@ const ACTIONS = [
   'archive',
   'restore',
   'resume',
+  'suspend',
   'end',
 ] as const;
 type Action = (typeof ACTIONS)[number];
@@ -58,6 +59,8 @@ async function POST({
         return respData(
           await codeSessions.resumeArchivedSession(user.id, params.id)
         );
+      case 'suspend':
+        return respData(await codeSessions.suspendSession(user.id, params.id));
       case 'end':
         return respData(await codeSessions.endSession(user.id, params.id));
     }

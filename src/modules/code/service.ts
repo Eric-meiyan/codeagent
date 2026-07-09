@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, lt, or } from 'drizzle-orm';
 
 import { db } from '@/core/db';
 import { envConfigs } from '@/config';
@@ -25,7 +25,7 @@ import {
   type CodeSessionAgent,
 } from './runtime';
 
-export type CodeSessionStatus = 'active' | 'ended' | 'error';
+export type CodeSessionStatus = 'active' | 'suspended' | 'ended' | 'error';
 export type { CodeSessionAgent };
 
 export interface CodeSessionView {
@@ -69,6 +69,18 @@ function maxActiveSessions() {
     10
   );
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function idleSuspendMinutes() {
+  const parsed = Number.parseInt(
+    envConfigs.code_session_idle_suspend_minutes || '30',
+    10
+  );
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+}
+
+function idleReaperBatchSize() {
+  return 20;
 }
 
 function asIso(value: Date | string | number | null | undefined) {
@@ -118,7 +130,10 @@ export async function listArchivedSessions(
     .where(
       and(
         eq(codeSession.userId, userId),
-        eq(codeSession.status, 'ended'),
+        or(
+          eq(codeSession.status, 'suspended'),
+          eq(codeSession.status, 'ended')
+        ),
         isNotNull(codeSession.archiveKey)
       )
     )
@@ -254,6 +269,29 @@ async function markSessionEnded(
   return toView(row);
 }
 
+async function markSessionSuspended(
+  userId: string,
+  sessionId: string,
+  archive?: RuntimeActionResult | null,
+  suspendedAt?: Date
+): Promise<CodeSessionView> {
+  const now = suspendedAt || new Date();
+  await db()
+    .update(codeSession)
+    .set({
+      status: 'suspended',
+      lastActiveAt: now,
+      updatedAt: now,
+      archiveKey: typeof archive?.key === 'string' ? archive.key : undefined,
+      archiveDigest: digestFromArchive(archive),
+    })
+    .where(and(eq(codeSession.userId, userId), eq(codeSession.id, sessionId)));
+
+  const row = await getOwnedSession(userId, sessionId);
+  if (!row) throw new Error('Session not found');
+  return toView(row);
+}
+
 export async function recordArchive(
   userId: string,
   sessionId: string,
@@ -265,6 +303,7 @@ export async function recordArchive(
     .set({
       archiveKey: typeof archive.key === 'string' ? archive.key : undefined,
       archiveDigest: digestFromArchive(archive),
+      lastActiveAt: now,
       updatedAt: now,
     })
     .where(and(eq(codeSession.userId, userId), eq(codeSession.id, sessionId)));
@@ -355,6 +394,16 @@ export async function recordClientSessionEvent(
     message: typeof input.message === 'string' ? input.message : '',
     metadata,
   });
+
+  if (row.status === 'active') {
+    const now = new Date();
+    await db()
+      .update(codeSession)
+      .set({ lastActiveAt: now, updatedAt: now })
+      .where(
+        and(eq(codeSession.userId, userId), eq(codeSession.id, sessionId))
+      );
+  }
 
   return { ok: true };
 }
@@ -710,7 +759,9 @@ export async function restoreSession(userId: string, sessionId: string) {
 export async function resumeArchivedSession(userId: string, sessionId: string) {
   const row = await getOwnedSession(userId, sessionId);
   if (!row) throw new Error('Session not found');
-  if (row.status !== 'ended') throw new Error('Session is not archived');
+  if (row.status !== 'ended' && row.status !== 'suspended') {
+    throw new Error('Session is not restorable');
+  }
   if (!row.archiveKey) throw new Error('Archived workspace not found');
 
   await ensureCanStartBillableSession(userId);
@@ -724,7 +775,7 @@ export async function resumeArchivedSession(userId: string, sessionId: string) {
     .limit(maxActiveSessions());
 
   if (activeRows.length >= maxActiveSessions()) {
-    throw new Error('End the current session before restoring this archive');
+    throw new Error('Suspend or end the current session before restoring');
   }
 
   const now = new Date();
@@ -752,11 +803,197 @@ export async function resumeArchivedSession(userId: string, sessionId: string) {
     metadata: {
       archiveKey: row.archiveKey,
       archiveDigest: row.archiveDigest || '',
+      previousStatus: row.status,
       previousEndedAt: asIso(row.endedAt),
     },
   });
 
   return { session: toView(resumed), restorePending: true };
+}
+
+export async function suspendSession(userId: string, sessionId: string) {
+  const row = await getOwnedSession(userId, sessionId);
+  if (!row) throw new Error('Session not found');
+  return suspendSessionRow(row, { reason: 'manual' });
+}
+
+export async function suspendIdleSessions(now = new Date()) {
+  const cutoff = new Date(now.getTime() - idleSuspendMinutes() * 60_000);
+  const rows = await db()
+    .select()
+    .from(codeSession)
+    .where(
+      and(
+        eq(codeSession.status, 'active'),
+        lt(codeSession.lastActiveAt, cutoff)
+      )
+    )
+    .orderBy(asc(codeSession.lastActiveAt))
+    .limit(idleReaperBatchSize());
+
+  const result = {
+    ok: true,
+    checked: rows.length,
+    suspended: 0,
+    skipped: 0,
+    failed: 0,
+    cutoff: cutoff.toISOString(),
+    idleMinutes: idleSuspendMinutes(),
+  };
+
+  for (const row of rows) {
+    try {
+      await suspendSessionRow(row, {
+        reason: 'idle-timeout',
+        now,
+        cutoff,
+      });
+      result.suspended += 1;
+    } catch (error) {
+      result.failed += 1;
+      console.warn('[code-session-reaper] suspend failed', {
+        sessionId: row.id,
+        userId: row.userId,
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  return result;
+}
+
+async function suspendSessionRow(
+  row: CodeSession,
+  options: { reason: string; now?: Date; cutoff?: Date }
+) {
+  if (row.status === 'suspended') {
+    return {
+      session: toView(row),
+      archive: null,
+      clear: null,
+      archiveError: null,
+      clearError: null,
+      billing: null,
+    };
+  }
+  if (row.status !== 'active') throw new Error('Session is not active');
+
+  let archive: RuntimeActionResult | null = null;
+  let archiveError: string | null = null;
+  try {
+    archive = await runtimeJson(
+      'archive',
+      row.runtimeUserId,
+      row.id,
+      'GET',
+      normalizeAgent(row.agent),
+      row.model
+    );
+  } catch (error) {
+    archiveError = (error as Error).message || 'Archive failed';
+    await recordCodeSessionEvent({
+      userId: row.userId,
+      sessionId: row.id,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.archive.failed',
+      severity: 'warn',
+      message: archiveError,
+      metadata: { during: 'session.suspend', reason: options.reason },
+    });
+  }
+
+  if (!archive && !row.archiveKey) {
+    await recordCodeSessionEvent({
+      userId: row.userId,
+      sessionId: row.id,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.suspend.failed',
+      severity: 'warn',
+      message: archiveError || 'No archive available for suspended session',
+      metadata: { reason: options.reason },
+    });
+    throw new Error('Cannot suspend session without a workspace archive');
+  }
+
+  let clear: RuntimeActionResult | null = null;
+  let clearError: string | null = null;
+  try {
+    clear = await runtimeJson(
+      'clear',
+      row.runtimeUserId,
+      row.id,
+      'POST',
+      normalizeAgent(row.agent),
+      row.model
+    );
+  } catch (error) {
+    clearError = (error as Error).message || 'Runtime cleanup failed';
+    await recordCodeSessionEvent({
+      userId: row.userId,
+      sessionId: row.id,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.clear.failed',
+      severity: 'warn',
+      message: clearError,
+      metadata: { during: 'session.suspend', reason: options.reason },
+    });
+  }
+
+  const suspendedAt = options.now || new Date();
+  let billing: unknown = null;
+  try {
+    billing = await settleSessionRuntimeUsage({
+      userId: row.userId,
+      sessionId: row.id,
+      runtimeState: 'active',
+      endedAt: suspendedAt,
+      metadata: { reason: options.reason, suspended: true },
+    });
+  } catch (error) {
+    await recordCodeSessionEvent({
+      userId: row.userId,
+      sessionId: row.id,
+      runtimeUserId: row.runtimeUserId,
+      agent: row.agent,
+      model: row.model,
+      eventType: 'session.billing.failed',
+      severity: 'warn',
+      message: (error as Error).message,
+      metadata: { during: 'session.suspend', reason: options.reason },
+    });
+  }
+
+  const session = await markSessionSuspended(
+    row.userId,
+    row.id,
+    archive,
+    suspendedAt
+  );
+  await recordCodeSessionEvent({
+    userId: row.userId,
+    sessionId: row.id,
+    runtimeUserId: row.runtimeUserId,
+    agent: row.agent,
+    model: row.model,
+    eventType: 'session.suspended',
+    message: 'Session suspended',
+    metadata: {
+      reason: options.reason,
+      cutoff: options.cutoff?.toISOString(),
+      archiveError,
+      clearError,
+      archive: archiveMetadata(archive),
+      billing: pickRuntimeFields(billing),
+    },
+  });
+
+  return { session, archive, clear, archiveError, clearError, billing };
 }
 
 export async function endSession(userId: string, sessionId: string) {

@@ -26,6 +26,8 @@ export const envConfigs: Record<string, string> = {
     publicEnv('VITE_RUNTIME_BASE_URL') ??
     'https://codeagent-spike-integrated-session-mvp.eric-wuyu1352.workers.dev',
   code_max_active_sessions: procEnv.CODE_MAX_ACTIVE_SESSIONS ?? '1',
+  code_session_idle_suspend_minutes:
+    procEnv.CODE_SESSION_IDLE_SUSPEND_MINUTES ?? '30',
 
   // Database
   database_url: procEnv.DATABASE_URL ?? '',

@@ -17,6 +17,12 @@
     // sync with .env.production (better-auth trustedOrigins, payment callbacks).
     "VITE_APP_URL": "https://<worker>.<your-subdomain>.workers.dev",
     "VITE_APP_NAME": "My App",
+    "CODE_SESSION_IDLE_SUSPEND_MINUTES": "30",
+  },
+  "triggers": {
+    // Archive and suspend idle sessions. Cron triggers run on UTC and may take
+    // several minutes to propagate after deploy.
+    "crons": ["*/5 * * * *"],
   },
   "d1_databases": [
     {

@@ -100,6 +100,8 @@ export default defineConfig({
       srcDirectory: 'src',
     }),
     viteReact(),
-    nitro(),
+    nitro({
+      plugins: ['./server/plugins/code-session-reaper.ts'],
+    }),
   ],
 });
