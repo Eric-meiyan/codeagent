@@ -5,6 +5,7 @@ import {
   Archive,
   ArrowDownToLine,
   Bot,
+  CircleStop,
   Cloud,
   FileDiff,
   Focus,
@@ -285,6 +286,7 @@ function CodeWorkspacePage() {
     mode,
     reconnect,
     focus: focusTerminal,
+    interrupt,
     scrollToBottom,
     enterScrollback,
   } = useTerminalSession({
@@ -905,6 +907,17 @@ function CodeWorkspacePage() {
                   onClick={scrollToBottom}
                 >
                   <ArrowDownToLine className="size-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 rounded-full"
+                  disabled={!terminalSessionId || status !== 'connected'}
+                  aria-label={m['code.terminal.interrupt']()}
+                  title={m['code.terminal.interrupt']()}
+                  onClick={interrupt}
+                >
+                  <CircleStop className="size-3.5" />
                 </Button>
                 <Button
                   type="button"

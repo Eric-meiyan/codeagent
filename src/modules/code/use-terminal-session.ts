@@ -44,6 +44,7 @@ export function useTerminalSession({
   mode: TerminalConnectionMode;
   reconnect: () => void;
   focus: () => void;
+  interrupt: () => void;
   scrollToBottom: () => void;
   enterScrollback: () => void;
 } {
@@ -177,9 +178,23 @@ export function useTerminalSession({
   }, []);
 
   const focus = useCallback(() => {
-    termRef.current?.focus();
-    setFocused(Boolean(termRef.current));
+    const term = termRef.current;
+    if (!term) {
+      setFocused(false);
+      return;
+    }
+    term.focus();
+    window.requestAnimationFrame(() => term.focus());
+    setFocused(true);
   }, []);
+
+  const interrupt = useCallback(() => {
+    sendInput('\x03');
+    const term = termRef.current;
+    term?.scrollToBottom();
+    term?.focus();
+    setFocused(Boolean(term));
+  }, [sendInput]);
 
   const scrollToBottom = useCallback(() => {
     termRef.current?.scrollToBottom();
@@ -539,6 +554,7 @@ export function useTerminalSession({
     mode,
     reconnect,
     focus,
+    interrupt,
     scrollToBottom,
     enterScrollback,
   };

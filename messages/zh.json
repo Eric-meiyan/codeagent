@@ -968,6 +968,7 @@
   "code.terminal.focus": "聚焦终端",
   "code.terminal.scrollback": "终端历史",
   "code.terminal.bottom": "回到底部",
+  "code.terminal.interrupt": "中断当前运行",
   "code.terminal.reconnect": "重连",
   "code.actions.health": "健康检查",
   "code.actions.inspect": "检查状态",

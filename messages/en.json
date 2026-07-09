@@ -968,6 +968,7 @@
   "code.terminal.focus": "Focus terminal",
   "code.terminal.scrollback": "Terminal history",
   "code.terminal.bottom": "Scroll to bottom",
+  "code.terminal.interrupt": "Interrupt current run",
   "code.terminal.reconnect": "Reconnect",
   "code.actions.health": "Health",
   "code.actions.inspect": "Inspect",
