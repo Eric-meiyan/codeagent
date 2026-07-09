@@ -556,6 +556,16 @@ function archiveMetadata(archive?: RuntimeActionResult | null) {
   };
 }
 
+function archiveEventKind(
+  row: CodeSession,
+  archive?: RuntimeActionResult | null
+) {
+  const digest = digestFromArchive(archive);
+  if (!row.archiveKey) return 'first';
+  if (digest && digest !== row.archiveDigest) return 'digest_changed';
+  return null;
+}
+
 function booleanField(payload: unknown, field: string) {
   if (!payload || typeof payload !== 'object') return undefined;
   const value = (payload as Record<string, unknown>)[field];
@@ -709,17 +719,28 @@ export async function archiveSession(userId: string, sessionId: string) {
       normalizeAgent(row.agent),
       row.model
     );
+    const eventKind = archiveEventKind(row, archive);
     const session = await recordArchive(userId, sessionId, archive);
-    await recordCodeSessionEvent({
-      userId,
-      sessionId,
-      runtimeUserId: row.runtimeUserId,
-      agent: row.agent,
-      model: row.model,
-      eventType: 'session.archive',
-      message: 'Workspace archived',
-      metadata: archiveMetadata(archive),
-    });
+    if (eventKind) {
+      await recordCodeSessionEvent({
+        userId,
+        sessionId,
+        runtimeUserId: row.runtimeUserId,
+        agent: row.agent,
+        model: row.model,
+        eventType: 'session.archive',
+        message:
+          eventKind === 'first'
+            ? 'Workspace archived for the first time'
+            : 'Workspace archive digest changed',
+        metadata: {
+          ...archiveMetadata(archive),
+          eventKind,
+          previousArchiveKey: row.archiveKey || '',
+          previousDigest: row.archiveDigest || '',
+        },
+      });
+    }
 
     return { session, archive };
   } catch (error) {
