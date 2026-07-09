@@ -12,6 +12,7 @@ const ACTIONS = [
   'restore',
   'resume',
   'suspend',
+  'discard',
   'end',
 ] as const;
 type Action = (typeof ACTIONS)[number];
@@ -61,6 +62,8 @@ async function POST({
         );
       case 'suspend':
         return respData(await codeSessions.suspendSession(user.id, params.id));
+      case 'discard':
+        return respData(await codeSessions.discardSession(user.id, params.id));
       case 'end':
         return respData(await codeSessions.endSession(user.id, params.id));
     }

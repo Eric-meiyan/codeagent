@@ -61,6 +61,7 @@ type CodeAction =
   | 'restore'
   | 'resume'
   | 'suspend'
+  | 'discard'
   | 'end';
 
 interface CodeActionResponse {
@@ -310,7 +311,9 @@ function CodeWorkspacePage() {
     };
   }, [busyAction, status, terminalSessionId]);
 
-  const newSession = async () => {
+  const newSession = async (
+    currentAction: 'suspend' | 'discard' = 'suspend'
+  ) => {
     if (!canCreateSession) {
       setNewSessionMsg(m['code.model.configure_required']());
       return;
@@ -322,8 +325,10 @@ function CodeWorkspacePage() {
       const cleanupErrors: string[] = [];
       for (const id of idsToEnd) {
         try {
-          const payload = await runSessionAction(id, 'suspend');
-          rememberArchivedSession(payload.session);
+          const payload = await runSessionAction(id, currentAction);
+          if (currentAction === 'suspend') {
+            rememberArchivedSession(payload.session);
+          }
         } catch (error) {
           cleanupErrors.push((error as Error).message || 'cleanup failed');
         }
@@ -949,7 +954,21 @@ function CodeWorkspacePage() {
               {m['code.sessions.new_confirm_description']()}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <div className="text-muted-foreground space-y-3 text-sm">
+            <div>
+              <p className="text-foreground font-medium">
+                {m['code.sessions.new_confirm_save_title']()}
+              </p>
+              <p>{m['code.sessions.new_confirm_save_description']()}</p>
+            </div>
+            <div>
+              <p className="text-foreground font-medium">
+                {m['code.sessions.new_confirm_discard_title']()}
+              </p>
+              <p>{m['code.sessions.new_confirm_discard_description']()}</p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-end">
             <Button
               type="button"
               variant="outline"
@@ -959,12 +978,22 @@ function CodeWorkspacePage() {
             </Button>
             <Button
               type="button"
+              variant="destructive"
               onClick={() => {
                 setConfirmNewSessionOpen(false);
-                void newSession();
+                void newSession('discard');
               }}
             >
-              {m['code.sessions.new_confirm_confirm']()}
+              {m['code.sessions.new_confirm_discard_confirm']()}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setConfirmNewSessionOpen(false);
+                void newSession('suspend');
+              }}
+            >
+              {m['code.sessions.new_confirm_save_confirm']()}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1069,6 +1098,10 @@ function formatActionMessage(action: CodeAction, payload: CodeActionResponse) {
     return payload.archiveError || payload.clearError
       ? `${m['code.actions.suspended']()}: ${payload.archiveError || payload.clearError}`
       : m['code.actions.suspended']();
+  }
+
+  if (action === 'discard') {
+    return m['code.actions.discarded']();
   }
 
   if (action === 'resume') {

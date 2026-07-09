@@ -269,6 +269,29 @@ async function markSessionEnded(
   return toView(row);
 }
 
+async function markSessionDiscarded(
+  userId: string,
+  sessionId: string,
+  endedAt?: Date
+): Promise<CodeSessionView> {
+  const now = endedAt || new Date();
+  await db()
+    .update(codeSession)
+    .set({
+      status: 'ended',
+      endedAt: now,
+      lastActiveAt: now,
+      updatedAt: now,
+      archiveKey: null,
+      archiveDigest: null,
+    })
+    .where(and(eq(codeSession.userId, userId), eq(codeSession.id, sessionId)));
+
+  const row = await getOwnedSession(userId, sessionId);
+  if (!row) throw new Error('Session not found');
+  return toView(row);
+}
+
 async function markSessionSuspended(
   userId: string,
   sessionId: string,
@@ -815,6 +838,83 @@ export async function suspendSession(userId: string, sessionId: string) {
   const row = await getOwnedSession(userId, sessionId);
   if (!row) throw new Error('Session not found');
   return suspendSessionRow(row, { reason: 'manual' });
+}
+
+export async function discardSession(userId: string, sessionId: string) {
+  const row = await getOwnedSession(userId, sessionId);
+  if (!row) throw new Error('Session not found');
+  if (row.status === 'error') throw new Error('Session is in error state');
+
+  let clear: RuntimeActionResult | null = null;
+  let billing: unknown = null;
+  const endedAt = new Date();
+
+  if (row.status === 'active') {
+    try {
+      clear = await runtimeJson(
+        'clear',
+        row.runtimeUserId,
+        row.id,
+        'POST',
+        normalizeAgent(row.agent),
+        row.model
+      );
+    } catch (error) {
+      await markSessionError(userId, sessionId);
+      await recordCodeSessionEvent({
+        userId,
+        sessionId,
+        runtimeUserId: row.runtimeUserId,
+        agent: row.agent,
+        model: row.model,
+        eventType: 'session.discard.failed',
+        severity: 'error',
+        message: (error as Error).message || 'Runtime cleanup failed',
+      });
+      throw error;
+    }
+
+    try {
+      billing = await settleSessionRuntimeUsage({
+        userId,
+        sessionId,
+        runtimeState: 'active',
+        endedAt,
+        metadata: { reason: 'discard' },
+      });
+    } catch (error) {
+      await recordCodeSessionEvent({
+        userId,
+        sessionId,
+        runtimeUserId: row.runtimeUserId,
+        agent: row.agent,
+        model: row.model,
+        eventType: 'session.billing.failed',
+        severity: 'warn',
+        message: (error as Error).message,
+        metadata: { during: 'session.discard' },
+      });
+    }
+  }
+
+  const session = await markSessionDiscarded(userId, sessionId, endedAt);
+  await recordCodeSessionEvent({
+    userId,
+    sessionId,
+    runtimeUserId: row.runtimeUserId,
+    agent: row.agent,
+    model: row.model,
+    eventType: 'session.discarded',
+    message: 'Session discarded',
+    metadata: {
+      previousStatus: row.status,
+      previousArchiveKey: row.archiveKey || '',
+      clear: pickRuntimeFields(clear),
+      billing: pickRuntimeFields(billing),
+    },
+  });
+
+  return { session, clear, billing };
 }
 
 export async function suspendIdleSessions(now = new Date()) {
