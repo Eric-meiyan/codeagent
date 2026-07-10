@@ -69,14 +69,22 @@ let emailVerificationEnabledLoaded = false;
 function getSocialProviders(configs: Record<string, string>) {
   const providers: Record<string, any> = {};
 
-  if (configs.google_client_id && configs.google_client_secret) {
+  if (
+    configs.google_auth_enabled === 'true' &&
+    configs.google_client_id &&
+    configs.google_client_secret
+  ) {
     providers.google = {
       clientId: configs.google_client_id,
       clientSecret: configs.google_client_secret,
     };
   }
 
-  if (configs.github_client_id && configs.github_client_secret) {
+  if (
+    configs.github_auth_enabled === 'true' &&
+    configs.github_client_id &&
+    configs.github_client_secret
+  ) {
     providers.github = {
       clientId: configs.github_client_id,
       clientSecret: configs.github_client_secret,
@@ -88,8 +96,10 @@ function getSocialProviders(configs: Record<string, string>) {
 
 function getSocialSignature(configs: Record<string, string>) {
   return [
+    configs.google_auth_enabled || '',
     configs.google_client_id || '',
     configs.google_client_secret || '',
+    configs.github_auth_enabled || '',
     configs.github_client_id || '',
     configs.github_client_secret || '',
     // Including the one-tap flag here so toggling it without changing
@@ -137,7 +147,12 @@ function isEmailConfigured(configs: Record<string, string>): boolean {
 function getAuthPlugins(configs: Record<string, string> | undefined) {
   if (!configs) return [];
   const plugins: any[] = [];
-  if (configs.google_client_id && configs.google_one_tap_enabled === 'true') {
+  if (
+    configs.google_auth_enabled === 'true' &&
+    configs.google_client_id &&
+    configs.google_client_secret &&
+    configs.google_one_tap_enabled === 'true'
+  ) {
     plugins.push(oneTap());
   }
   return plugins;

@@ -21,6 +21,7 @@ export function GoogleOneTap() {
     if (session?.user) return;
     if (
       configs.google_one_tap_enabled !== 'true' ||
+      configs.google_auth_configured !== 'true' ||
       !configs.google_client_id
     ) {
       return;

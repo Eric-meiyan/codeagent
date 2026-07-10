@@ -86,8 +86,8 @@ function SignUpPage() {
 
   const configsLoaded = configQuery.isSuccess;
   const emailEnabled = configs.email_auth_enabled !== 'false';
-  const googleEnabled = configs.google_auth_enabled === 'true';
-  const githubEnabled = configs.github_auth_enabled === 'true';
+  const googleEnabled = configs.google_auth_configured === 'true';
+  const githubEnabled = configs.github_auth_configured === 'true';
   const emailVerificationEnabled =
     configs.email_verification_enabled === 'true';
   const inviteCodeRequired = configs.invite_code_required === 'true';
@@ -166,7 +166,18 @@ function SignUpPage() {
   });
 
   async function handleSocial(provider: 'google' | 'github') {
-    await signIn.social({ provider, callbackURL: afterLoginUrl });
+    setError('');
+    try {
+      const result: any = await signIn.social({
+        provider,
+        callbackURL: afterLoginUrl,
+      });
+      if (result?.error) {
+        setError(result.error.message || 'Sign up failed');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Sign up failed');
+    }
   }
 
   return (

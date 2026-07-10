@@ -81,8 +81,8 @@ function SignInPage() {
 
   const configsLoaded = configQuery.isSuccess;
   const emailEnabled = configs.email_auth_enabled !== 'false';
-  const googleEnabled = configs.google_auth_enabled === 'true';
-  const githubEnabled = configs.github_auth_enabled === 'true';
+  const googleEnabled = configs.google_auth_configured === 'true';
+  const githubEnabled = configs.github_auth_configured === 'true';
   const passwordResetEnabled = configs.password_reset_enabled === 'true';
   const hasSocial = googleEnabled || githubEnabled;
   const hasAnyMethod = emailEnabled || hasSocial;
@@ -130,7 +130,18 @@ function SignInPage() {
   });
 
   async function handleSocial(provider: 'google' | 'github') {
-    await signIn.social({ provider, callbackURL: afterLoginUrl });
+    setError('');
+    try {
+      const result: any = await signIn.social({
+        provider,
+        callbackURL: afterLoginUrl,
+      });
+      if (result?.error) {
+        setError(result.error.message || 'Sign in failed');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Sign in failed');
+    }
   }
 
   return (
