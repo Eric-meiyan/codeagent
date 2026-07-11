@@ -54,6 +54,7 @@ async function GET({ request }: { request: Request }) {
         credits: credit.credits,
         remainingCredits: credit.remainingCredits,
         description: credit.description,
+        metadata: credit.metadata,
         status: credit.status,
         expiresAt: credit.expiresAt,
         createdAt: credit.createdAt,

@@ -6,7 +6,13 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 const table = sqliteTable;
 
@@ -773,6 +779,11 @@ export const codeBillingEvent = table(
     agent: text('agent').notNull().default('claude'),
     model: text('model').notNull().default(''),
     eventType: text('event_type').notNull(),
+    idempotencyKey: text('idempotency_key'),
+    provider: text('provider').notNull().default(''),
+    endpoint: text('endpoint').notNull().default(''),
+    upstreamStatus: integer('upstream_status').notNull().default(0),
+    requestId: text('request_id').notNull().default(''),
     runtimeState: text('runtime_state').notNull().default(''),
     inputTokens: integer('input_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull().default(0),
@@ -785,6 +796,7 @@ export const codeBillingEvent = table(
     status: text('status').notNull().default('charged'),
     description: text('description').notNull().default(''),
     metadata: text('metadata').notNull().default(''),
+    rawUsage: text('raw_usage').notNull().default(''),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -793,6 +805,7 @@ export const codeBillingEvent = table(
     index('idx_code_billing_event_user_created').on(t.userId, t.createdAt),
     index('idx_code_billing_event_session').on(t.sessionId),
     index('idx_code_billing_event_type').on(t.eventType),
+    uniqueIndex('idx_code_billing_event_idempotency').on(t.idempotencyKey),
   ]
 );
 

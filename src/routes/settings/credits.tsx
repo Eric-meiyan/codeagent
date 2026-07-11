@@ -21,6 +21,7 @@ type CreditRow = {
   credits: number;
   remainingCredits: number;
   description?: string | null;
+  metadata?: string | null;
   status: string;
   expiresAt?: string | null;
   createdAt: string;
@@ -76,7 +77,17 @@ function CreditsPage() {
     },
     {
       header: m['settings.credits.description_col'](),
-      cell: (r) => <span>{r.description || '—'}</span>,
+      cell: (r) => {
+        const detail = creditUsageDetail(r);
+        return (
+          <div className="max-w-md">
+            <div>{r.description || '—'}</div>
+            {detail ? (
+              <div className="text-muted-foreground mt-1 text-xs">{detail}</div>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       header: m['settings.credits.type'](),
@@ -207,3 +218,55 @@ function CreditsPage() {
 export const Route = createFileRoute('/settings/credits')({
   component: CreditsPage,
 });
+
+function creditUsageDetail(row: CreditRow) {
+  const metadata = parseMetadata(row.metadata);
+  if (!metadata) return '';
+
+  const sessionId = textValue(metadata.sessionId);
+  const model = textValue(metadata.model);
+  const endpoint = textValue(metadata.endpoint);
+  const requestId = textValue(metadata.requestId);
+  const inputTokens = numberValue(metadata.inputTokens);
+  const outputTokens = numberValue(metadata.outputTokens);
+  const cachedInputTokens = numberValue(metadata.cachedInputTokens);
+  const durationSeconds = numberValue(metadata.durationSeconds);
+
+  const parts: string[] = [];
+  if (sessionId) parts.push(`session ${shortId(sessionId)}`);
+  if (model) parts.push(model);
+  if (endpoint) parts.push(endpoint);
+  if (inputTokens || outputTokens || cachedInputTokens) {
+    parts.push(`tokens ${inputTokens}/${outputTokens}/${cachedInputTokens}`);
+  }
+  if (durationSeconds)
+    parts.push(`runtime ${Math.ceil(durationSeconds / 60)}m`);
+  if (requestId) parts.push(`request ${shortId(requestId)}`);
+
+  return parts.join(' · ');
+}
+
+function parseMetadata(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function textValue(value: unknown) {
+  return typeof value === 'string' ? value : '';
+}
+
+function numberValue(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function shortId(value: string) {
+  return value.length <= 12 ? value : `${value.slice(0, 10)}…`;
+}

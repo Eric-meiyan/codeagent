@@ -43,8 +43,14 @@ export interface ModelTokenUsageInput {
   inputTokens?: unknown;
   outputTokens?: unknown;
   cachedInputTokens?: unknown;
+  idempotencyKey?: unknown;
+  provider?: unknown;
+  endpoint?: unknown;
+  upstreamStatus?: unknown;
+  requestId?: unknown;
+  rawUsage?: unknown;
   description?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: unknown;
 }
 
 export interface RuntimeUsageInput {
@@ -164,6 +170,27 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
   const inputTokens = nonNegativeInteger(input.inputTokens);
   const outputTokens = nonNegativeInteger(input.outputTokens);
   const cachedInputTokens = nonNegativeInteger(input.cachedInputTokens);
+  const idempotencyKey = optionalText(input.idempotencyKey, 255) || null;
+  const provider =
+    optionalText(input.provider, 255) || optionalText(model?.provider, 255);
+  const endpoint = optionalText(input.endpoint, 255);
+  const upstreamStatus = nonNegativeInteger(input.upstreamStatus);
+  const requestId = optionalText(input.requestId, 255);
+  const rawUsage = jsonText(input.rawUsage, 2048);
+  const metadata = {
+    ...metadataObject(input.metadata),
+    sessionId: row.id,
+    agent: normalizeAgent(row.agent),
+    model: row.model,
+    provider,
+    endpoint,
+    upstreamStatus,
+    requestId,
+    idempotencyKey,
+    inputTokens,
+    outputTokens,
+    cachedInputTokens,
+  };
 
   const { rawCostCredits, chargedCredits } = calculateModelTokenCharge({
     inputTokens,
@@ -191,16 +218,22 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
       agent: normalizeAgent(row.agent),
       model: row.model,
       eventType: 'model_tokens',
+      idempotencyKey,
+      provider,
+      endpoint,
+      upstreamStatus,
+      requestId,
       inputTokens,
       outputTokens,
       cachedInputTokens,
+      rawUsage,
       rawCostCredits,
       chargedCredits: settings.enabled ? chargedCredits : 0,
       billingMultiplier: multiplier,
       description:
         input.description ||
         `Model usage: ${row.model} (${inputTokens} input / ${outputTokens} output tokens)`,
-      metadata: JSON.stringify(input.metadata || {}),
+      metadata: jsonText(metadata, 4096),
     })
   );
 }
@@ -240,6 +273,11 @@ export async function settleSessionRuntimeUsage(input: RuntimeUsageInput) {
         `Runtime usage: ${chargedMinutes} minute${chargedMinutes === 1 ? '' : 's'} (${runtimeState})`,
       metadata: JSON.stringify({
         ...(input.metadata || {}),
+        sessionId: row.id,
+        agent: normalizeAgent(row.agent),
+        model: row.model,
+        runtimeState,
+        durationSeconds,
         chargedMinutes,
         freeMinutesPerSession: settings.freeMinutesPerSession,
       }),
@@ -265,28 +303,66 @@ async function createBillingEvent(
   }
 ) {
   const chargedCredits = values.chargedCredits ?? 0;
+  const metadata = values.metadata || '';
+
+  if (values.idempotencyKey) {
+    const existing = await getBillingEventByIdempotencyKey(
+      tx,
+      values.userId,
+      values.idempotencyKey
+    );
+    if (existing) return existing;
+
+    const event: NewCodeBillingEvent = {
+      id: getUuid(),
+      ...values,
+      chargedCredits,
+      creditId: values.creditId || '',
+      status: values.status || (chargedCredits > 0 ? 'pending' : 'recorded'),
+      metadata,
+      createdAt: new Date(),
+    };
+
+    try {
+      await tx.insert(codeBillingEvent).values(event);
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const existingAfterConflict = await getBillingEventByIdempotencyKey(
+          tx,
+          values.userId,
+          values.idempotencyKey
+        );
+        if (existingAfterConflict) return existingAfterConflict;
+      }
+      throw error;
+    }
+
+    if (chargedCredits <= 0) return event;
+
+    const { creditId, status } = await settleEventCredits(tx, {
+      ...values,
+      metadata,
+      chargedCredits,
+    });
+    await tx
+      .update(codeBillingEvent)
+      .set({ creditId, status })
+      .where(eq(codeBillingEvent.id, event.id));
+
+    return { ...event, creditId, status };
+  }
+
   let status = chargedCredits > 0 ? 'charged' : 'recorded';
   let creditId = values.creditId || '';
 
   if (chargedCredits > 0) {
-    const result = await consume({
-      userId: values.userId,
-      credits: chargedCredits,
-      scene:
-        values.eventType === 'model_tokens'
-          ? CreditTransactionScene.CODE_MODEL
-          : CreditTransactionScene.CODE_RUNTIME,
-      description: values.description,
-      metadata: values.metadata,
-      tx,
+    const settled = await settleEventCredits(tx, {
+      ...values,
+      metadata,
+      chargedCredits,
     });
-
-    if (result.success) {
-      creditId = result.consumedCredit?.id || '';
-      status = 'charged';
-    } else {
-      status = 'unpaid';
-    }
+    creditId = settled.creditId;
+    status = settled.status;
   }
 
   const event: NewCodeBillingEvent = {
@@ -295,10 +371,57 @@ async function createBillingEvent(
     chargedCredits,
     creditId,
     status: values.status || status,
+    metadata,
     createdAt: new Date(),
   };
   await tx.insert(codeBillingEvent).values(event);
   return event;
+}
+
+async function settleEventCredits(
+  tx: any,
+  values: Omit<NewCodeBillingEvent, 'id' | 'createdAt' | 'status'> & {
+    chargedCredits: number;
+  }
+) {
+  const result = await consume({
+    userId: values.userId,
+    credits: values.chargedCredits,
+    scene:
+      values.eventType === 'model_tokens'
+        ? CreditTransactionScene.CODE_MODEL
+        : CreditTransactionScene.CODE_RUNTIME,
+    description: values.description,
+    metadata: values.metadata,
+    tx,
+  });
+
+  if (result.success) {
+    return {
+      creditId: result.consumedCredit?.id || '',
+      status: 'charged',
+    };
+  }
+
+  return { creditId: '', status: 'unpaid' };
+}
+
+async function getBillingEventByIdempotencyKey(
+  tx: any,
+  userId: string,
+  idempotencyKey: string
+) {
+  const [row] = await tx
+    .select()
+    .from(codeBillingEvent)
+    .where(
+      and(
+        eq(codeBillingEvent.userId, userId),
+        eq(codeBillingEvent.idempotencyKey, idempotencyKey)
+      )
+    )
+    .limit(1);
+  return row;
 }
 
 async function getOwnedActiveOrEndedSession(userId: string, sessionId: string) {
@@ -363,6 +486,44 @@ function nonNegativeInteger(value: unknown) {
       ? value
       : Number.parseInt(typeof value === 'string' ? value : '0', 10);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function optionalText(value: unknown, maxLength: number) {
+  if (value === null || value === undefined) return '';
+  return String(value).trim().slice(0, maxLength);
+}
+
+function metadataObject(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return metadataObject(parsed);
+    } catch {
+      return {};
+    }
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function jsonText(value: unknown, maxLength: number) {
+  try {
+    return JSON.stringify(value ?? {}).slice(0, maxLength);
+  } catch {
+    return '{}';
+  }
+}
+
+function isUniqueConstraintError(error: unknown) {
+  const message = String(
+    (error as any)?.message || (error as any)?.cause?.message || ''
+  ).toLowerCase();
+  return (
+    message.includes('unique') ||
+    message.includes('duplicate') ||
+    message.includes('constraint')
+  );
 }
 
 function positiveInteger(value: unknown, fallback: number) {

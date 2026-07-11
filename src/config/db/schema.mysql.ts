@@ -14,6 +14,7 @@ import {
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from 'drizzle-orm/mysql-core';
 
@@ -667,6 +668,11 @@ export const codeBillingEvent = table(
     agent: varchar('agent', { length: 32 }).notNull().default('claude'),
     model: varchar('model', { length: 191 }).notNull().default(''),
     eventType: varchar('event_type', { length: 64 }).notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 255 }),
+    provider: varchar('provider', { length: 255 }).notNull().default(''),
+    endpoint: varchar('endpoint', { length: 255 }).notNull().default(''),
+    upstreamStatus: int('upstream_status').notNull().default(0),
+    requestId: varchar('request_id', { length: 255 }).notNull().default(''),
     runtimeState: varchar('runtime_state', { length: 32 })
       .notNull()
       .default(''),
@@ -681,12 +687,14 @@ export const codeBillingEvent = table(
     status: varchar('status', { length: 32 }).notNull().default('charged'),
     description: text('description'),
     metadata: longtext('metadata'),
+    rawUsage: varchar('raw_usage', { length: 2048 }).notNull().default(''),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => [
     index('idx_code_billing_event_user_created').on(t.userId, t.createdAt),
     index('idx_code_billing_event_session').on(t.sessionId),
     index('idx_code_billing_event_type').on(t.eventType),
+    uniqueIndex('idx_code_billing_event_idempotency').on(t.idempotencyKey),
   ]
 );
 

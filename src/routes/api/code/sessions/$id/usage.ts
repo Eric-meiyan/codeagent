@@ -48,6 +48,13 @@ async function POST({
           inputTokens: body.inputTokens ?? body.input_tokens,
           outputTokens: body.outputTokens ?? body.output_tokens,
           cachedInputTokens: body.cachedInputTokens ?? body.cached_input_tokens,
+          idempotencyKey: body.idempotencyKey ?? body.idempotency_key,
+          provider: body.provider,
+          endpoint: body.endpoint,
+          upstreamStatus: body.upstreamStatus ?? body.upstream_status,
+          requestId: body.requestId ?? body.request_id,
+          rawUsage: body.rawUsage ?? body.raw_usage,
+          description: body.description,
           metadata: body.metadata,
         })
       );
