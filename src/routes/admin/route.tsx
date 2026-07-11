@@ -67,10 +67,17 @@ function AdminLayout() {
       group,
     },
     {
-      href: '/admin/code-models',
-      label: m['admin.nav.code_models'](),
+      href: '/admin/code-sessions',
+      label: m['admin.nav.code'](),
       icon: Bot,
       group,
+      items: [
+        {
+          href: '/admin/code-sessions',
+          label: m['admin.nav.code_sessions'](),
+        },
+        { href: '/admin/code-models', label: m['admin.nav.code_models']() },
+      ],
     },
   ];
 
