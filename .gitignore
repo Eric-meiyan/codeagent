@@ -1,5 +1,7 @@
 # dependencies
 /node_modules
+/packages/runtime/node_modules/
+/packages/runtime/.wrangler/
 /.pnp
 .pnp.*
 .yarn/*
@@ -21,6 +23,7 @@ src/paraglide/
 # the committed template is wrangler.example.jsonc
 /.wrangler/
 wrangler.jsonc
+!packages/runtime/wrangler.jsonc
 
 # claude code local state
 .claude/scheduled_tasks.lock

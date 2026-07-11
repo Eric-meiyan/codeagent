@@ -1,0 +1,20 @@
+{
+  "name": "hicode-runtime",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "vendor:fetch": "node scripts/fetch-vendor.mjs",
+    "deploy": "wrangler deploy",
+    "deploy:worker": "wrangler deploy --containers-rollout=none",
+    "smoke": "node scripts/remote-smoke-test.mjs"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.0.25"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260630.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.23.0"
+  }
+}

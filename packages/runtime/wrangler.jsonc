@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "codeagent-spike-integrated-session-mvp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "vars": {
+    "ANTHROPIC_API_BASE_URL": "https://yunwu.ai",
+    "APP_BASE_URL": "https://hicode.run",
+  },
+  "containers": [
+    {
+      "class_name": "IntegratedSessionContainer",
+      "image": "./container/Dockerfile",
+      "max_instances": 20,
+      "instance_type": "basic",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "IntegratedSessionContainer",
+        "name": "INTEGRATED_SESSION_CONTAINER",
+      },
+    ],
+  },
+  "r2_buckets": [
+    {
+      "binding": "WORKSPACE_ARCHIVES",
+      "bucket_name": "codeagent-spike-workspaces",
+    },
+  ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["IntegratedSessionContainer"],
+    },
+  ],
+}

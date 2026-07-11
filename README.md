@@ -27,7 +27,7 @@ Local development defaults to SQLite at `data/local.db`. Production URL is confi
 
 ## Runtime Path
 
-The runtime integration is built from the verified spike chain in `../spikes/06-integrated-session-mvp`:
+The runtime integration now lives in `packages/runtime`:
 
 ```text
 Browser xterm.js
@@ -38,6 +38,16 @@ Browser xterm.js
 -> Platform model gateway
 -> Preview proxy and R2 archive/restore
 ```
+
+Runtime commands are exposed from the root package:
+
+| Command                      | Description                                         |
+| ---------------------------- | --------------------------------------------------- |
+| `pnpm runtime:check`         | Type-check the runtime Worker                       |
+| `pnpm runtime:vendor`        | Download exact CLI tarballs for container builds    |
+| `pnpm runtime:deploy`        | Deploy Worker + rebuild Cloudflare Container        |
+| `pnpm runtime:deploy:worker` | Deploy only Worker code, skipping container rebuild |
+| `pnpm runtime:smoke`         | Run the runtime remote smoke test                   |
 
 ## Commands
 
@@ -54,6 +64,6 @@ Browser xterm.js
 
 - Reduce automatic archive event noise. The current workspace auto-archive runs while a terminal is connected and records every successful archive event; next pass should record only failures, first archive, digest changes, or a summarized heartbeat.
 - Add an admin/debug view for `code_session_event` so session failures can be inspected without direct D1 queries.
-- Move runtime spike deployment into a first-class production package with its own deployment notes, secrets checklist, and smoke tests.
+- Move the production runtime endpoint from the legacy workers.dev spike URL to a first-class hicode subdomain.
 - Add production-grade model gateway accounting, limits, retries, audit logs, and BYOK support.
 - Formalize D1 migration tracking. `/drizzle/` is currently ignored; SQL needed for production schema changes is mirrored under `docs/sql/` until the migration workflow is made explicit.
