@@ -22,6 +22,7 @@ export type RuntimeBillingState = 'idle' | 'active' | 'high_load';
 
 export interface CodeBillingSettings {
   enabled: boolean;
+  requireConfiguredModelCosts: boolean;
   creditsPerCny: number;
   defaultMultiplier: number;
   freeMinutesPerSession: number;
@@ -113,6 +114,10 @@ export async function getCodeBillingSettings(): Promise<CodeBillingSettings> {
   const configs = await getAllConfigs();
   return {
     enabled: boolConfig(configs.billing_enabled, true),
+    requireConfiguredModelCosts: boolConfig(
+      configs.billing_require_model_costs,
+      false
+    ),
     creditsPerCny: numberConfig(configs.billing_credits_per_cny, 100),
     defaultMultiplier: numberConfig(configs.billing_default_multiplier, 200),
     freeMinutesPerSession: numberConfig(

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import {
+  AlertTriangle,
   Archive,
   ArrowDownToLine,
   Bot,
@@ -35,7 +36,7 @@ import {
   type TerminalConnectionEvent,
   type TerminalStatus,
 } from '@/modules/code/use-terminal-session';
-import { apiPost } from '@/lib/api-client';
+import { ApiError, apiPost } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -60,6 +61,7 @@ type CodeAction =
   | 'inspect'
   | 'archive'
   | 'restore'
+  | 'resume-preflight'
   | 'resume'
   | 'suspend'
   | 'discard'
@@ -82,6 +84,12 @@ interface CodeActionResponse {
   codexConfigured?: boolean;
   ok?: boolean;
   [key: string]: unknown;
+}
+
+interface SessionStartIssue {
+  reason: 'insufficient_credits' | 'model_costs_not_configured';
+  balance?: number;
+  requiredBalance?: number;
 }
 
 type ArchiveCheckpointState =
@@ -127,6 +135,8 @@ function CodeWorkspacePage() {
   );
   const [actionMsg, setActionMsg] = useState<string>('');
   const [newSessionMsg, setNewSessionMsg] = useState<string>('');
+  const [newSessionIssue, setNewSessionIssue] =
+    useState<SessionStartIssue | null>(null);
   const [confirmNewSessionOpen, setConfirmNewSessionOpen] = useState(false);
   const [confirmRestoreSession, setConfirmRestoreSession] =
     useState<CodeSessionView | null>(null);
@@ -435,8 +445,15 @@ function CodeWorkspacePage() {
       return;
     }
     setBusyAction('new');
+    setNewSessionIssue(null);
     setNewSessionMsg(m['code.actions.running']());
     try {
+      await apiPost('/api/code/sessions', {
+        preflight: true,
+        agent: selectedAgent,
+        model: selectedModel,
+      });
+
       const idsToEnd = sessionId ? [sessionId] : sessions.map((s) => s.id);
       const cleanupErrors: string[] = [];
       for (const id of idsToEnd) {
@@ -468,7 +485,9 @@ function CodeWorkspacePage() {
           : message
       );
     } catch (err) {
-      setNewSessionMsg((err as Error).message || 'error');
+      const issue = sessionStartIssueFromError(err);
+      setNewSessionIssue(issue);
+      setNewSessionMsg(issue ? '' : (err as Error).message || 'error');
     } finally {
       setBusyAction('');
     }
@@ -510,9 +529,12 @@ function CodeWorkspacePage() {
 
   const restoreArchivedSession = async (archivedSessionId: string) => {
     setBusyAction('resume');
+    setNewSessionIssue(null);
     setNewSessionMsg(m['code.actions.running']());
     setActionMsg(m['code.actions.running']());
     try {
+      await runSessionAction(archivedSessionId, 'resume-preflight');
+
       if (sessionId) {
         const payload = await runSessionAction(sessionId, 'suspend');
         rememberArchivedSession(payload.session);
@@ -537,7 +559,9 @@ function CodeWorkspacePage() {
       );
       setActionMsg(formatActionMessage('resume', payload));
     } catch (err) {
-      const message = (err as Error).message || 'error';
+      const issue = sessionStartIssueFromError(err);
+      const message = issue ? '' : (err as Error).message || 'error';
+      setNewSessionIssue(issue);
       setNewSessionMsg(message);
       setActionMsg(message);
     } finally {
@@ -727,6 +751,38 @@ function CodeWorkspacePage() {
             >
               {newSessionMsg}
             </p>
+          )}
+
+          {newSessionIssue && (
+            <div
+              role="alert"
+              className="border-destructive/40 bg-destructive/5 mt-3 rounded-md border px-3 py-3 text-xs leading-5"
+            >
+              <div className="text-destructive flex items-start gap-2 font-medium">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  {newSessionIssue.reason === 'insufficient_credits'
+                    ? m['code.billing.insufficient_title']()
+                    : m['code.billing.model_unavailable_title']()}
+                </span>
+              </div>
+              <p className="text-muted-foreground mt-1.5">
+                {newSessionIssue.reason === 'insufficient_credits'
+                  ? m['code.billing.insufficient_description']({
+                      balance: newSessionIssue.balance ?? 0,
+                      required: newSessionIssue.requiredBalance ?? 0,
+                    })
+                  : m['code.billing.model_unavailable_description']()}
+              </p>
+              {newSessionIssue.reason === 'insufficient_credits' && (
+                <Link
+                  href="/settings/credits"
+                  className="text-primary mt-2 inline-flex font-medium hover:underline"
+                >
+                  {m['code.billing.manage_credits']()}
+                </Link>
+              )}
+            </div>
           )}
 
           <div className="mt-6 space-y-2">
@@ -1334,6 +1390,32 @@ function stringField(payload: unknown, field: string) {
   if (!payload || typeof payload !== 'object') return '';
   const value = (payload as Record<string, unknown>)[field];
   return typeof value === 'string' ? value : '';
+}
+
+function sessionStartIssueFromError(error: unknown): SessionStartIssue | null {
+  if (!(error instanceof ApiError) || !error.data) return null;
+  if (typeof error.data !== 'object') return null;
+
+  const data = error.data as Record<string, unknown>;
+  const reason = data.reason;
+  if (
+    reason !== 'insufficient_credits' &&
+    reason !== 'model_costs_not_configured'
+  ) {
+    return null;
+  }
+
+  return {
+    reason,
+    balance: finiteNumber(data.balance),
+    requiredBalance: finiteNumber(data.requiredBalance),
+  };
+}
+
+function finiteNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function checkpointFromSession(

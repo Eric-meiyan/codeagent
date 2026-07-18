@@ -299,6 +299,14 @@ export function getSettings(): Setting[] {
       defaultValue: 'true',
     },
     {
+      name: 'billing_require_model_costs',
+      title: 'Require configured model costs',
+      type: 'switch',
+      group: 'usage_billing',
+      tab: 'general',
+      defaultValue: 'false',
+    },
+    {
       name: 'billing_credits_per_cny',
       title: 'Credits per CNY',
       type: 'number',

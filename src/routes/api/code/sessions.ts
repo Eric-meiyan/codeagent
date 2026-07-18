@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { getAuth } from '@/core/auth';
 import * as codeSessions from '@/modules/code/service';
 import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
-import { respData, respErr } from '@/lib/resp';
+import { respData, respErr, respJson } from '@/lib/resp';
 
 async function currentUser(request: Request) {
   const auth = getAuth();
@@ -29,14 +29,30 @@ async function GET({ request }: { request: Request }) {
 async function POST({ request }: { request: Request }) {
   try {
     const user = await currentUser(request);
+    const body = await request.json().catch(() => ({}));
+    if (body.preflight === true) {
+      const limited = enforceMinIntervalRateLimit(request, {
+        intervalMs: 500,
+        keyPrefix: 'code-session-preflight',
+        extraKey: user.id,
+      });
+      if (limited) return limited;
+
+      return respData(
+        await codeSessions.preflightSessionStart(
+          user.id,
+          body.agent,
+          body.model
+        )
+      );
+    }
+
     const limited = enforceMinIntervalRateLimit(request, {
       intervalMs: 2000,
       keyPrefix: 'code-session-create',
       extraKey: user.id,
     });
     if (limited) return limited;
-
-    const body = await request.json().catch(() => ({}));
     const session = await codeSessions.createSession(
       user.id,
       body.agent,
@@ -44,6 +60,12 @@ async function POST({ request }: { request: Request }) {
     );
     return respData(session);
   } catch (error: any) {
+    if (error instanceof codeSessions.CodeSessionStartError) {
+      return respJson(-1, error.message, {
+        reason: error.reason,
+        ...error.details,
+      });
+    }
     return respErr(error.message || 'Failed to create code session');
   }
 }

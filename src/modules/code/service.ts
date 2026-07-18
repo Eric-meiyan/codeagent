@@ -16,7 +16,12 @@ import {
 } from '@/modules/credits/service';
 
 import { getCodeBillingSettings, settleSessionRuntimeUsage } from './billing';
-import { getEnabledCodeModel } from './models';
+import {
+  getCodeModelForBilling,
+  getEnabledCodeModel,
+  hasConfiguredModelTokenCosts,
+  type CodeModelView,
+} from './models';
 import {
   actionUrl,
   generateSessionId,
@@ -40,6 +45,21 @@ export interface CodeSessionView {
   lastActiveAt: string;
   endedAt: string | null;
   createdAt: string;
+}
+
+export type CodeSessionStartErrorReason =
+  | 'insufficient_credits'
+  | 'model_costs_not_configured';
+
+export class CodeSessionStartError extends Error {
+  constructor(
+    public reason: CodeSessionStartErrorReason,
+    message: string,
+    public details: Record<string, unknown> = {}
+  ) {
+    super(message);
+    this.name = 'CodeSessionStartError';
+  }
 }
 
 export interface RuntimeActionResult {
@@ -183,7 +203,9 @@ export async function createSession(
   agent?: unknown,
   model?: unknown
 ): Promise<CodeSessionView> {
-  await ensureCanStartBillableSession(userId);
+  const normalizedAgent = normalizeAgent(agent);
+  const selectedModel = await getEnabledCodeModel(normalizedAgent, model);
+  await ensureCanStartBillableSession(userId, selectedModel);
 
   const activeRows = await db()
     .select({ id: codeSession.id })
@@ -198,8 +220,6 @@ export async function createSession(
   }
 
   const now = new Date();
-  const normalizedAgent = normalizeAgent(agent);
-  const selectedModel = await getEnabledCodeModel(normalizedAgent, model);
   const sessionId = generateSessionId();
   const row: NewCodeSession = {
     id: sessionId,
@@ -228,6 +248,20 @@ export async function createSession(
     metadata: { status: created.status },
   });
   return toView(created);
+}
+
+export async function preflightSessionStart(
+  userId: string,
+  agent?: unknown,
+  model?: unknown
+) {
+  const selectedModel = await getEnabledCodeModel(agent, model);
+  await ensureCanStartBillableSession(userId, selectedModel);
+  return {
+    agent: selectedModel.agent,
+    model: selectedModel.model,
+    ready: true,
+  };
 }
 
 export async function getOwnedSession(userId: string, sessionId: string) {
@@ -933,7 +967,8 @@ export async function resumeArchivedSession(userId: string, sessionId: string) {
   }
   if (!row.archiveKey) throw new Error('Archived workspace not found');
 
-  await ensureCanStartBillableSession(userId);
+  const model = await getCodeModelForBilling(row.agent, row.model);
+  await ensureCanStartBillableSession(userId, model || undefined);
 
   const activeRows = await db()
     .select({ id: codeSession.id })
@@ -978,6 +1013,22 @@ export async function resumeArchivedSession(userId: string, sessionId: string) {
   });
 
   return { session: toView(resumed), restorePending: true };
+}
+
+export async function preflightSessionResume(
+  userId: string,
+  sessionId: string
+) {
+  const row = await getOwnedSession(userId, sessionId);
+  if (!row) throw new Error('Session not found');
+  if (row.status !== 'ended' && row.status !== 'suspended') {
+    throw new Error('Session is not restorable');
+  }
+  if (!row.archiveKey) throw new Error('Archived workspace not found');
+
+  const model = await getCodeModelForBilling(row.agent, row.model);
+  await ensureCanStartBillableSession(userId, model || undefined);
+  return { ready: true, sessionId: row.id };
 }
 
 export async function suspendSession(userId: string, sessionId: string) {
@@ -1322,11 +1373,28 @@ export async function endSession(userId: string, sessionId: string) {
   }
 }
 
-async function ensureCanStartBillableSession(userId: string) {
+async function ensureCanStartBillableSession(
+  userId: string,
+  model?: CodeModelView
+) {
   const settings = await getCodeBillingSettings();
-  if (!settings.enabled || settings.sessionCreateMinBalanceCredits <= 0) {
+  if (!settings.enabled) {
     return;
   }
+
+  if (
+    settings.requireConfiguredModelCosts &&
+    model &&
+    !hasConfiguredModelTokenCosts(model)
+  ) {
+    throw new CodeSessionStartError(
+      'model_costs_not_configured',
+      'Selected model billing is not configured',
+      { agent: model.agent, model: model.model }
+    );
+  }
+
+  if (settings.sessionCreateMinBalanceCredits <= 0) return;
 
   let balance = await getBalance(userId);
   if (balance >= settings.sessionCreateMinBalanceCredits) {
@@ -1343,6 +1411,13 @@ async function ensureCanStartBillableSession(userId: string) {
   }
 
   if (balance < settings.sessionCreateMinBalanceCredits) {
-    throw new Error('Insufficient credits to start a new session');
+    throw new CodeSessionStartError(
+      'insufficient_credits',
+      'Insufficient credits to start a new session',
+      {
+        balance,
+        requiredBalance: settings.sessionCreateMinBalanceCredits,
+      }
+    );
   }
 }

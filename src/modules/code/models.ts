@@ -38,6 +38,18 @@ export interface CodeModelListResult {
   total: number;
 }
 
+export function hasConfiguredModelTokenCosts(
+  model: Pick<
+    CodeModelView,
+    'inputTokenCostCreditsPer1m' | 'outputTokenCostCreditsPer1m'
+  >
+) {
+  return (
+    model.inputTokenCostCreditsPer1m > 0 &&
+    model.outputTokenCostCreditsPer1m > 0
+  );
+}
+
 export interface CodeModelInput {
   agent?: unknown;
   provider?: unknown;
@@ -197,6 +209,22 @@ export async function getEnabledCodeModel(
   return toCodeModelView(row);
 }
 
+export async function getCodeModelForBilling(agent: unknown, model: unknown) {
+  const normalizedAgent = normalizeAgent(agent);
+  const modelId = textValue(model);
+  if (!modelId) return null;
+
+  const [row] = await db()
+    .select()
+    .from(codeModel)
+    .where(
+      and(eq(codeModel.agent, normalizedAgent), eq(codeModel.model, modelId))
+    )
+    .limit(1);
+
+  return row ? toCodeModelView(row) : null;
+}
+
 export async function createCodeModel(input: CodeModelInput) {
   const values = normalizeInput(input, true);
   await ensureNoDuplicate(values.agent, values.model);
@@ -320,7 +348,7 @@ function normalizeInput(
   const model = textValue(input.model);
   if (requireModel && !model) throw new Error('Model is required');
 
-  return {
+  const values = {
     agent,
     provider: textValue(input.provider) || 'yunwu',
     model,
@@ -341,6 +369,14 @@ function normalizeInput(
     isDefault: input.isDefault === true,
     sort: numberValue(input.sort),
   };
+
+  if (values.enabled && !hasConfiguredModelTokenCosts(values)) {
+    throw new Error(
+      'Enabled models require input and output token costs greater than 0'
+    );
+  }
+
+  return values;
 }
 
 function textValue(value: unknown) {

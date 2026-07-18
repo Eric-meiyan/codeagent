@@ -6,11 +6,14 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, CircleCheck, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { m } from '@/core/i18n/messages';
-import type { CodeModelView } from '@/modules/code/models';
+import {
+  hasConfiguredModelTokenCosts,
+  type CodeModelView,
+} from '@/modules/code/models';
 import {
   CODE_SESSION_AGENTS,
   normalizeAgent,
@@ -24,6 +27,7 @@ import {
   apiPut,
   type PageResult,
 } from '@/lib/api-client';
+import { cn } from '@/lib/utils';
 import { DataTable, type Column } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -170,6 +174,10 @@ function CodeModelsPage() {
 
   function handleCreate() {
     if (!form.model.trim() || !form.label.trim()) return;
+    if (form.enabled && !hasConfiguredModelTokenCosts(form)) {
+      toast.error(m['admin.code_models.cost_required_error']());
+      return;
+    }
     createMutation.mutate(form);
   }
 
@@ -194,6 +202,10 @@ function CodeModelsPage() {
 
   function handleEdit() {
     if (!editingModel || !editForm.model.trim() || !editForm.label.trim()) {
+      return;
+    }
+    if (editForm.enabled && !hasConfiguredModelTokenCosts(editForm)) {
+      toast.error(m['admin.code_models.cost_required_error']());
       return;
     }
     editMutation.mutate({ id: editingModel.id, ...editForm });
@@ -248,11 +260,28 @@ function CodeModelsPage() {
     {
       header: m['admin.code_models.billing_col'](),
       cell: (model) => (
-        <div className="text-muted-foreground min-w-[180px] font-mono text-xs leading-5">
-          <p>in {model.inputTokenCostCreditsPer1m}/1M</p>
-          <p>out {model.outputTokenCostCreditsPer1m}/1M</p>
-          <p>cache {model.cachedInputTokenCostCreditsPer1m}/1M</p>
-          <p>x{(model.billingMultiplier / 100).toFixed(2)}</p>
+        <div className="min-w-[180px] text-xs leading-5">
+          <div className="text-muted-foreground font-mono">
+            <p>in {model.inputTokenCostCreditsPer1m}/1M</p>
+            <p>out {model.outputTokenCostCreditsPer1m}/1M</p>
+            <p>cache {model.cachedInputTokenCostCreditsPer1m}/1M</p>
+            <p>x{(model.billingMultiplier / 100).toFixed(2)}</p>
+          </div>
+          <Badge
+            variant={
+              hasConfiguredModelTokenCosts(model) ? 'secondary' : 'outline'
+            }
+            className="mt-1.5 gap-1"
+          >
+            {hasConfiguredModelTokenCosts(model) ? (
+              <CircleCheck className="size-3" />
+            ) : (
+              <AlertTriangle className="text-destructive size-3" />
+            )}
+            {hasConfiguredModelTokenCosts(model)
+              ? m['admin.code_models.cost_ready']()
+              : m['admin.code_models.cost_missing']()}
+          </Badge>
         </div>
       ),
     },
@@ -405,6 +434,8 @@ function renderFormFields(
   values: CodeModelForm,
   onChange: (values: CodeModelForm) => void
 ) {
+  const costsReady = hasConfiguredModelTokenCosts(values);
+
   function setAgent(value: CodeSessionAgent | null) {
     if (!value) return;
     const agent = normalizeAgent(value);
@@ -420,6 +451,33 @@ function renderFormFields(
 
   return (
     <div className="grid gap-4 py-4 sm:grid-cols-2">
+      <div
+        className={cn(
+          'rounded-md border px-3 py-3 text-sm sm:col-span-2',
+          costsReady
+            ? 'border-border bg-muted/40'
+            : 'border-destructive/40 bg-destructive/5'
+        )}
+      >
+        <div className="flex items-start gap-2">
+          {costsReady ? (
+            <CircleCheck className="text-primary mt-0.5 size-4 shrink-0" />
+          ) : (
+            <AlertTriangle className="text-destructive mt-0.5 size-4 shrink-0" />
+          )}
+          <div>
+            <p className="font-medium">
+              {costsReady
+                ? m['admin.code_models.cost_ready']()
+                : m['admin.code_models.cost_missing']()}
+            </p>
+            <p className="text-muted-foreground mt-1 leading-5">
+              {m['admin.code_models.cost_guide']()}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="space-y-2">
         <Label>{m['admin.code_models.agent_field']()}</Label>
         <Select value={values.agent} onValueChange={setAgent}>

@@ -3,13 +3,14 @@ import { createFileRoute } from '@tanstack/react-router';
 import { getAuth } from '@/core/auth';
 import * as codeSessions from '@/modules/code/service';
 import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
-import { respData, respErr } from '@/lib/resp';
+import { respData, respErr, respJson } from '@/lib/resp';
 
 const ACTIONS = [
   'health',
   'inspect',
   'archive',
   'restore',
+  'resume-preflight',
   'resume',
   'suspend',
   'discard',
@@ -56,6 +57,10 @@ async function POST({
         return respData(await codeSessions.archiveSession(user.id, params.id));
       case 'restore':
         return respData(await codeSessions.restoreSession(user.id, params.id));
+      case 'resume-preflight':
+        return respData(
+          await codeSessions.preflightSessionResume(user.id, params.id)
+        );
       case 'resume':
         return respData(
           await codeSessions.resumeArchivedSession(user.id, params.id)
@@ -68,6 +73,12 @@ async function POST({
         return respData(await codeSessions.endSession(user.id, params.id));
     }
   } catch (error: any) {
+    if (error instanceof codeSessions.CodeSessionStartError) {
+      return respJson(-1, error.message, {
+        reason: error.reason,
+        ...error.details,
+      });
+    }
     return respErr(error.message || 'Code session action failed');
   }
 }
