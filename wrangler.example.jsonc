@@ -22,7 +22,7 @@
   "triggers": {
     // Archive and suspend idle sessions. Cron triggers run on UTC and may take
     // several minutes to propagate after deploy.
-    "crons": ["*/5 * * * *"],
+    "crons": ["* * * * *"],
   },
   "d1_databases": [
     {

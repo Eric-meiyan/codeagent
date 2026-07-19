@@ -612,6 +612,9 @@ export const codeSession = table(
     title: varchar('title', { length: 255 }).notNull().default(''),
     archiveKey: text('archive_key'),
     archiveDigest: varchar('archive_digest', { length: 128 }),
+    suspensionReason: varchar('suspension_reason', { length: 100 })
+      .notNull()
+      .default(''),
     lastBilledAt: timestamp('last_billed_at'),
     billedCredits: int('billed_credits').notNull().default(0),
     lastActiveAt: timestamp('last_active_at').defaultNow().notNull(),

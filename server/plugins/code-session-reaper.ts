@@ -12,13 +12,16 @@ export default definePlugin(() => {
   hooks.hook(
     'cloudflare:scheduled' as any,
     async ({ controller }: { controller: ScheduledControllerLike }) => {
-      if (controller.cron !== '*/5 * * * *') return;
+      if (controller.cron !== '* * * * *') return;
 
-      const { suspendIdleSessions } = await import('@/modules/code/service');
-      const result = await suspendIdleSessions(
+      const { meterActiveSessions, suspendIdleSessions } =
+        await import('@/modules/code/service');
+      const now = new Date(controller.scheduledTime);
+      const billing = await meterActiveSessions(now);
+      const reaper = await suspendIdleSessions(
         new Date(controller.scheduledTime)
       );
-      console.info('[code-session-reaper]', result);
+      console.info('[code-session-maintenance]', { billing, reaper });
     }
   );
 });

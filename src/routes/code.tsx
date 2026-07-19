@@ -159,7 +159,9 @@ function CodeWorkspacePage() {
   );
 
   const currentSession =
-    sessions.find((session) => session.id === sessionId) ?? null;
+    sessions.find((session) => session.id === sessionId) ??
+    archivedSessions.find((session) => session.id === sessionId) ??
+    null;
   const currentAgent = currentSession?.agent ?? selectedAgent;
   const currentModel = currentSession?.model || selectedModel;
   const currentRuntimeUserId =
@@ -169,7 +171,13 @@ function CodeWorkspacePage() {
     : true;
   const restoreInProgress =
     restoreGate.sessionId === sessionId && restoreGate.status === 'restoring';
-  const terminalSessionId = sessionId && sessionRestoreReady ? sessionId : null;
+  const terminalSessionId =
+    sessionId && sessionRestoreReady && currentSession?.status === 'active'
+      ? sessionId
+      : null;
+  const billingSuspended =
+    currentSession?.status === 'suspended' &&
+    currentSession.suspensionReason === 'insufficient_credits';
   const availableModels = models.filter(
     (model) => model.agent === selectedAgent
   );
@@ -394,6 +402,14 @@ function CodeWorkspacePage() {
         if (cancelled) return;
         if (payload.session) {
           setSessions((prev) => upsertSession(prev, payload.session!));
+          if (
+            payload.session.status === 'suspended' ||
+            payload.session.status === 'ended'
+          ) {
+            setArchivedSessions((prev) =>
+              upsertArchivedSession(prev, payload.session!)
+            );
+          }
         }
         const issue = runtimeIssueFrom(payload);
         if (issue) {
@@ -981,7 +997,9 @@ function CodeWorkspacePage() {
                   variant="outline"
                   className="h-7 rounded-full text-xs"
                   disabled={
-                    !sessionId || Boolean(busyAction) || restoreInProgress
+                    !terminalSessionId ||
+                    Boolean(busyAction) ||
+                    restoreInProgress
                   }
                   onClick={() => void reconnectTerminal()}
                 >
@@ -1013,6 +1031,28 @@ function CodeWorkspacePage() {
               {sessionId && runtimeIssue && (
                 <div className="absolute inset-x-4 top-4 rounded-md border border-red-500/40 bg-red-950/85 px-4 py-3 text-sm text-red-50 shadow-lg">
                   {runtimeIssue}
+                </div>
+              )}
+              {sessionId && billingSuspended && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#17130f]/95 px-6">
+                  <div className="max-w-md text-center">
+                    <AlertTriangle className="mx-auto size-7 text-amber-400" />
+                    <h3 className="mt-3 text-base font-semibold text-[#f4eadf]">
+                      {m['code.billing.suspended_title']()}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-[#f4eadf]/65">
+                      {m['code.billing.suspended_description']()}
+                    </p>
+                    <Link
+                      href="/settings/credits"
+                      className={cn(
+                        buttonVariants({ size: 'sm' }),
+                        'mt-4 inline-flex'
+                      )}
+                    >
+                      {m['code.billing.recharge']()}
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>

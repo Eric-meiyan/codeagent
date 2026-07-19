@@ -2,12 +2,14 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
 import {
+  authorizeModelUsage,
+  CodeBillingAuthorizationError,
   getCodeSessionById,
   recordModelTokenUsage,
   settleSessionRuntimeUsage,
 } from '@/modules/code/billing';
 import { getAllConfigs } from '@/modules/config/service';
-import { respData, respErr } from '@/lib/resp';
+import { respData, respErr, respJson } from '@/lib/resp';
 
 async function resolveUsageUser(request: Request, sessionId: string) {
   const configs = await getAllConfigs();
@@ -39,6 +41,19 @@ async function POST({
     const userId = await resolveUsageUser(request, params.id);
     const body = await request.json().catch(() => ({}));
     const eventType = body.eventType || body.type;
+
+    if (eventType === 'model_authorize') {
+      return respData(
+        await authorizeModelUsage({
+          userId,
+          sessionId: params.id,
+          estimatedInputTokens:
+            body.estimatedInputTokens ?? body.estimated_input_tokens,
+          maxOutputTokens: body.maxOutputTokens ?? body.max_output_tokens,
+          authorizationKey: body.authorizationKey ?? body.authorization_key,
+        })
+      );
+    }
 
     if (eventType === 'model_tokens') {
       return respData(
@@ -73,6 +88,12 @@ async function POST({
 
     return respErr('Invalid usage event type');
   } catch (error: any) {
+    if (error instanceof CodeBillingAuthorizationError) {
+      return respJson(-1, error.message, {
+        reason: error.reason,
+        ...error.details,
+      });
+    }
     return respErr(error.message || 'Failed to record usage');
   }
 }

@@ -42,6 +42,7 @@ export interface CodeSessionView {
   title: string;
   archiveKey: string | null;
   archiveDigest: string | null;
+  suspensionReason: string;
   lastActiveAt: string;
   endedAt: string | null;
   createdAt: string;
@@ -126,6 +127,12 @@ function asIso(value: Date | string | number | null | undefined) {
   return new Date(value).toISOString();
 }
 
+function dateValue(value: Date | string | number | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function sessionRuntimeUserId(userId: string, sessionId: string) {
   return `${sanitizeUserId(userId)}-${sessionId}`;
 }
@@ -140,6 +147,7 @@ export function toView(row: CodeSession): CodeSessionView {
     title: row.title,
     archiveKey: row.archiveKey,
     archiveDigest: row.archiveDigest,
+    suspensionReason: row.suspensionReason || '',
     lastActiveAt: asIso(row.lastActiveAt) || new Date().toISOString(),
     endedAt: asIso(row.endedAt),
     createdAt: asIso(row.createdAt) || new Date().toISOString(),
@@ -229,6 +237,8 @@ export async function createSession(
     runtimeUserId: sessionRuntimeUserId(userId, sessionId),
     status: 'active',
     title: '',
+    suspensionReason: '',
+    lastBilledAt: now,
     lastActiveAt: now,
     createdAt: now,
     updatedAt: now,
@@ -307,6 +317,7 @@ async function markSessionEnded(
     .update(codeSession)
     .set({
       status: 'ended',
+      suspensionReason: '',
       endedAt: now,
       lastActiveAt: now,
       updatedAt: now,
@@ -330,6 +341,7 @@ async function markSessionDiscarded(
     .update(codeSession)
     .set({
       status: 'ended',
+      suspensionReason: '',
       endedAt: now,
       lastActiveAt: now,
       updatedAt: now,
@@ -347,13 +359,15 @@ async function markSessionSuspended(
   userId: string,
   sessionId: string,
   archive?: RuntimeActionResult | null,
-  suspendedAt?: Date
+  suspendedAt?: Date,
+  suspensionReason = ''
 ): Promise<CodeSessionView> {
   const now = suspendedAt || new Date();
   await db()
     .update(codeSession)
     .set({
       status: 'suspended',
+      suspensionReason,
       lastActiveAt: now,
       updatedAt: now,
       archiveKey: typeof archive?.key === 'string' ? archive.key : undefined,
@@ -771,7 +785,9 @@ export async function health(userId: string, sessionId: string) {
 export async function inspectSession(userId: string, sessionId: string) {
   const row = await getOwnedSession(userId, sessionId);
   if (!row) throw new Error('Session not found');
-  if (row.status !== 'active') throw new Error('Session is not active');
+  if (row.status !== 'active') {
+    return { session: toView(row), tmuxStatus: null, workspace: null };
+  }
 
   const agent = normalizeAgent(row.agent);
   try {
@@ -987,7 +1003,9 @@ export async function resumeArchivedSession(userId: string, sessionId: string) {
     .update(codeSession)
     .set({
       status: 'active',
+      suspensionReason: '',
       endedAt: null,
+      lastBilledAt: now,
       lastActiveAt: now,
       updatedAt: now,
     })
@@ -1114,6 +1132,114 @@ export async function discardSession(userId: string, sessionId: string) {
   return { session, clear, billing };
 }
 
+export async function meterActiveSessions(now = new Date()) {
+  const settings = await getCodeBillingSettings();
+  const result = {
+    ok: true,
+    enabled: settings.enabled && settings.runtimeMeterEnabled,
+    checked: 0,
+    charged: 0,
+    chargedCredits: 0,
+    initialized: 0,
+    notDue: 0,
+    unpaid: 0,
+    suspended: 0,
+    failed: 0,
+    at: now.toISOString(),
+  };
+
+  if (!result.enabled) return result;
+
+  const rows = await db()
+    .select()
+    .from(codeSession)
+    .where(eq(codeSession.status, 'active'))
+    .orderBy(asc(codeSession.lastBilledAt), asc(codeSession.createdAt))
+    .limit(50);
+  result.checked = rows.length;
+
+  const intervalMs = settings.runtimeMeterIntervalMinutes * 60_000;
+  const maxDurationSeconds = settings.runtimeMeterMaxCatchupMinutes * 60;
+  const bucket = Math.floor(now.getTime() / intervalMs);
+
+  for (const row of rows) {
+    try {
+      const lastBilledAt = dateValue(row.lastBilledAt);
+      if (!lastBilledAt) {
+        await db()
+          .update(codeSession)
+          .set({ lastBilledAt: now, updatedAt: now })
+          .where(eq(codeSession.id, row.id));
+        result.initialized += 1;
+        continue;
+      }
+      if (now.getTime() - lastBilledAt.getTime() < intervalMs) {
+        result.notDue += 1;
+        continue;
+      }
+
+      const lastActiveAt = dateValue(row.lastActiveAt) || lastBilledAt;
+      const runtimeState =
+        now.getTime() - lastActiveAt.getTime() >= intervalMs * 2
+          ? 'idle'
+          : 'active';
+      const event = await settleSessionRuntimeUsage({
+        userId: row.userId,
+        sessionId: row.id,
+        runtimeState,
+        endedAt: now,
+        maxDurationSeconds,
+        recordZeroCharge: false,
+        wholeMinutesOnly: true,
+        metadata: { reason: 'incremental-meter', bucket },
+      });
+
+      if (event.status === 'not_due' || event.status === 'not_billable') {
+        result.notDue += 1;
+        continue;
+      }
+      if (event.status === 'charged') {
+        result.charged += 1;
+        result.chargedCredits += Number(event.chargedCredits || 0);
+        continue;
+      }
+      if (event.status !== 'unpaid') continue;
+
+      result.unpaid += 1;
+      await recordCodeSessionEvent({
+        userId: row.userId,
+        sessionId: row.id,
+        runtimeUserId: row.runtimeUserId,
+        agent: row.agent,
+        model: row.model,
+        eventType: 'session.billing.insufficient_credits',
+        severity: 'warn',
+        message: 'Runtime suspended because credits are insufficient',
+        metadata: {
+          chargedCredits: event.chargedCredits,
+          durationSeconds: event.durationSeconds,
+          runtimeState,
+        },
+      });
+      await suspendSessionRow(row, {
+        reason: 'insufficient_credits',
+        now,
+        skipBilling: true,
+      });
+      result.suspended += 1;
+    } catch (error) {
+      result.failed += 1;
+      console.warn('[code-runtime-meter] session failed', {
+        sessionId: row.id,
+        userId: row.userId,
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  return result;
+}
+
 export async function suspendIdleSessions(now = new Date()) {
   const cutoff = new Date(now.getTime() - idleSuspendMinutes() * 60_000);
   const rows = await db()
@@ -1161,7 +1287,12 @@ export async function suspendIdleSessions(now = new Date()) {
 
 async function suspendSessionRow(
   row: CodeSession,
-  options: { reason: string; now?: Date; cutoff?: Date }
+  options: {
+    reason: string;
+    now?: Date;
+    cutoff?: Date;
+    skipBilling?: boolean;
+  }
 ) {
   if (row.status === 'suspended') {
     return {
@@ -1244,33 +1375,36 @@ async function suspendSessionRow(
 
   const suspendedAt = options.now || new Date();
   let billing: unknown = null;
-  try {
-    billing = await settleSessionRuntimeUsage({
-      userId: row.userId,
-      sessionId: row.id,
-      runtimeState: 'active',
-      endedAt: suspendedAt,
-      metadata: { reason: options.reason, suspended: true },
-    });
-  } catch (error) {
-    await recordCodeSessionEvent({
-      userId: row.userId,
-      sessionId: row.id,
-      runtimeUserId: row.runtimeUserId,
-      agent: row.agent,
-      model: row.model,
-      eventType: 'session.billing.failed',
-      severity: 'warn',
-      message: (error as Error).message,
-      metadata: { during: 'session.suspend', reason: options.reason },
-    });
+  if (!options.skipBilling) {
+    try {
+      billing = await settleSessionRuntimeUsage({
+        userId: row.userId,
+        sessionId: row.id,
+        runtimeState: 'active',
+        endedAt: suspendedAt,
+        metadata: { reason: options.reason, suspended: true },
+      });
+    } catch (error) {
+      await recordCodeSessionEvent({
+        userId: row.userId,
+        sessionId: row.id,
+        runtimeUserId: row.runtimeUserId,
+        agent: row.agent,
+        model: row.model,
+        eventType: 'session.billing.failed',
+        severity: 'warn',
+        message: (error as Error).message,
+        metadata: { during: 'session.suspend', reason: options.reason },
+      });
+    }
   }
 
   const session = await markSessionSuspended(
     row.userId,
     row.id,
     archive,
-    suspendedAt
+    suspendedAt,
+    options.reason
   );
   await recordCodeSessionEvent({
     userId: row.userId,

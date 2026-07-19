@@ -10,12 +10,18 @@ import {
   type NewCodeBillingEvent,
 } from '@/config/db/schema';
 import { getAllConfigs } from '@/modules/config/service';
-import { consume, CreditTransactionScene } from '@/modules/credits/service';
+import {
+  consume,
+  CreditTransactionScene,
+  getBalance,
+} from '@/modules/credits/service';
 import { getUuid } from '@/lib/hash';
 
 import { normalizeAgent } from './runtime';
 
 const ONE_MILLION = 1_000_000;
+const MODEL_INPUT_AUTHORIZATION_BUFFER_PERCENT = 125;
+const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 
 export type CodeBillingEventType = 'model_tokens' | 'runtime_minutes';
 export type RuntimeBillingState = 'idle' | 'active' | 'high_load';
@@ -23,6 +29,8 @@ export type RuntimeBillingState = 'idle' | 'active' | 'high_load';
 export interface CodeBillingSettings {
   enabled: boolean;
   requireConfiguredModelCosts: boolean;
+  modelGateEnabled: boolean;
+  runtimeMeterEnabled: boolean;
   creditsPerCny: number;
   defaultMultiplier: number;
   freeMinutesPerSession: number;
@@ -36,6 +44,32 @@ export interface CodeBillingSettings {
   storageCreditsPerGbDay: number;
   dailyFreeNetworkGb: number;
   networkCreditsPerGb: number;
+  runtimeMeterIntervalMinutes: number;
+  runtimeMeterMaxCatchupMinutes: number;
+}
+
+export type CodeBillingAuthorizationReason =
+  | 'insufficient_credits'
+  | 'model_costs_not_configured'
+  | 'session_not_active';
+
+export class CodeBillingAuthorizationError extends Error {
+  constructor(
+    public reason: CodeBillingAuthorizationReason,
+    message: string,
+    public details: Record<string, unknown> = {}
+  ) {
+    super(message);
+    this.name = 'CodeBillingAuthorizationError';
+  }
+}
+
+export interface ModelUsageAuthorizationInput {
+  userId: string;
+  sessionId: string;
+  estimatedInputTokens?: unknown;
+  maxOutputTokens?: unknown;
+  authorizationKey?: unknown;
 }
 
 export interface ModelTokenUsageInput {
@@ -61,6 +95,10 @@ export interface RuntimeUsageInput {
   endedAt?: Date;
   description?: string;
   metadata?: Record<string, unknown>;
+  idempotencyKey?: string;
+  maxDurationSeconds?: number;
+  recordZeroCharge?: boolean;
+  wholeMinutesOnly?: boolean;
 }
 
 export function calculateModelTokenCharge(params: {
@@ -110,12 +148,66 @@ export function calculateRuntimeCharge(params: {
   };
 }
 
+export function calculateMeteredDuration(params: {
+  chargeStart: Date | null;
+  endedAt: Date;
+  maxDurationSeconds?: number;
+  wholeMinutesOnly?: boolean;
+}) {
+  if (!params.chargeStart || params.endedAt <= params.chargeStart) {
+    return {
+      durationSeconds: 0,
+      pendingDurationSeconds: 0,
+      billedThrough: params.chargeStart,
+    };
+  }
+
+  const elapsedSeconds = params.wholeMinutesOnly
+    ? Math.floor(
+        (params.endedAt.getTime() - params.chargeStart.getTime()) / 1000
+      )
+    : Math.ceil(
+        (params.endedAt.getTime() - params.chargeStart.getTime()) / 1000
+      );
+  const maxDurationSeconds = positiveInteger(
+    params.maxDurationSeconds,
+    elapsedSeconds
+  );
+  const cappedDurationSeconds = Math.min(elapsedSeconds, maxDurationSeconds);
+  const durationSeconds = params.wholeMinutesOnly
+    ? Math.floor(cappedDurationSeconds / 60) * 60
+    : cappedDurationSeconds;
+  return {
+    durationSeconds,
+    pendingDurationSeconds: Math.max(0, elapsedSeconds - durationSeconds),
+    billedThrough: new Date(
+      params.chargeStart.getTime() + durationSeconds * 1000
+    ),
+  };
+}
+
 export async function getCodeBillingSettings(): Promise<CodeBillingSettings> {
   const configs = await getAllConfigs();
+  const runtimeMeterIntervalMinutes = positiveIntegerOrFallback(
+    configs.billing_runtime_meter_interval_minutes,
+    1
+  );
+  const runtimeMeterMaxCatchupMinutes = Math.max(
+    runtimeMeterIntervalMinutes,
+    positiveIntegerOrFallback(
+      configs.billing_runtime_meter_max_catchup_minutes,
+      2
+    )
+  );
   return {
     enabled: boolConfig(configs.billing_enabled, true),
     requireConfiguredModelCosts: boolConfig(
       configs.billing_require_model_costs,
+      false
+    ),
+    modelGateEnabled: boolConfig(configs.billing_model_gate_enabled, false),
+    runtimeMeterEnabled: boolConfig(
+      configs.billing_runtime_meter_enabled,
       false
     ),
     creditsPerCny: numberConfig(configs.billing_credits_per_cny, 100),
@@ -152,6 +244,8 @@ export async function getCodeBillingSettings(): Promise<CodeBillingSettings> {
       configs.billing_network_credits_per_gb,
       10
     ),
+    runtimeMeterIntervalMinutes,
+    runtimeMeterMaxCatchupMinutes,
   };
 }
 
@@ -162,6 +256,104 @@ export async function getCodeSessionById(sessionId: string) {
     .where(eq(codeSession.id, sessionId))
     .limit(1);
   return row;
+}
+
+export async function authorizeModelUsage(input: ModelUsageAuthorizationInput) {
+  const settings = await getCodeBillingSettings();
+  const row = await getOwnedActiveOrEndedSession(input.userId, input.sessionId);
+  if (row.status !== 'active') {
+    throw new CodeBillingAuthorizationError(
+      'session_not_active',
+      'Code session is not active',
+      { sessionId: row.id, status: row.status }
+    );
+  }
+
+  const model = await getCodeModelRow(row.agent, row.model);
+  const costsConfigured = Boolean(
+    model &&
+    positiveInteger(model.inputTokenCostCreditsPer1m, 0) > 0 &&
+    positiveInteger(model.outputTokenCostCreditsPer1m, 0) > 0
+  );
+  const authorizationKey = optionalText(input.authorizationKey, 255);
+
+  if (!settings.enabled || !settings.modelGateEnabled) {
+    return {
+      authorized: true,
+      enforcement: 'disabled',
+      authorizationKey,
+      estimatedCredits: 0,
+      requiredBalance: 0,
+    };
+  }
+
+  if (settings.requireConfiguredModelCosts && !costsConfigured) {
+    throw new CodeBillingAuthorizationError(
+      'model_costs_not_configured',
+      'Selected model billing is not configured',
+      { agent: normalizeAgent(row.agent), model: row.model }
+    );
+  }
+
+  const estimatedInputTokens = Math.ceil(
+    (nonNegativeInteger(input.estimatedInputTokens) *
+      MODEL_INPUT_AUTHORIZATION_BUFFER_PERCENT) /
+      100
+  );
+  const maxOutputTokens =
+    nonNegativeInteger(input.maxOutputTokens) || DEFAULT_MAX_OUTPUT_TOKENS;
+  const multiplier = positiveIntegerOrFallback(
+    model?.billingMultiplier,
+    settings.defaultMultiplier
+  );
+  const estimated = calculateModelTokenCharge({
+    inputTokens: estimatedInputTokens,
+    outputTokens: maxOutputTokens,
+    cachedInputTokens: 0,
+    inputTokenCostCreditsPer1m: positiveInteger(
+      model?.inputTokenCostCreditsPer1m,
+      0
+    ),
+    outputTokenCostCreditsPer1m: positiveInteger(
+      model?.outputTokenCostCreditsPer1m,
+      0
+    ),
+    cachedInputTokenCostCreditsPer1m: positiveInteger(
+      model?.cachedInputTokenCostCreditsPer1m,
+      0
+    ),
+    billingMultiplier: multiplier,
+  });
+  const requiredBalance = Math.max(
+    estimated.chargedCredits,
+    costsConfigured ? 1 : 0
+  );
+  const balance = await getBalance(input.userId);
+
+  if (balance < requiredBalance) {
+    throw new CodeBillingAuthorizationError(
+      'insufficient_credits',
+      'Insufficient credits for this model request',
+      {
+        balance,
+        requiredBalance,
+        estimatedCredits: estimated.chargedCredits,
+        sessionId: row.id,
+        model: row.model,
+      }
+    );
+  }
+
+  return {
+    authorized: true,
+    enforcement: 'enabled',
+    authorizationKey,
+    balance,
+    estimatedCredits: estimated.chargedCredits,
+    requiredBalance,
+    estimatedInputTokens,
+    maxOutputTokens,
+  };
 }
 
 export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
@@ -216,8 +408,8 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
     billingMultiplier: multiplier,
   });
 
-  return db().transaction(async (tx: any) =>
-    createBillingEvent(tx, {
+  return db().transaction(async (tx: any) => {
+    const result = await createBillingEvent(tx, {
       userId: input.userId,
       sessionId: row.id,
       agent: normalizeAgent(row.agent),
@@ -239,8 +431,9 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
         input.description ||
         `Model usage: ${row.model} (${inputTokens} input / ${outputTokens} output tokens)`,
       metadata: jsonText(metadata, 4096),
-    })
-  );
+    });
+    return result.event;
+  });
 }
 
 export async function settleSessionRuntimeUsage(input: RuntimeUsageInput) {
@@ -248,11 +441,19 @@ export async function settleSessionRuntimeUsage(input: RuntimeUsageInput) {
   const row = await getOwnedActiveOrEndedSession(input.userId, input.sessionId);
   const runtimeState = normalizeRuntimeState(input.runtimeState);
   const endedAt = input.endedAt || new Date();
-  const chargeStart = runtimeChargeStart(row, settings);
-  const durationSeconds =
-    chargeStart && endedAt > chargeStart
-      ? Math.ceil((endedAt.getTime() - chargeStart.getTime()) / 1000)
-      : 0;
+  const chargeStart = runtimeChargeStart(row, settings, endedAt);
+  const { durationSeconds, pendingDurationSeconds, billedThrough } =
+    calculateMeteredDuration({
+      chargeStart,
+      endedAt,
+      maxDurationSeconds: input.maxDurationSeconds,
+      wholeMinutesOnly: input.wholeMinutesOnly,
+    });
+  const idempotencyKey =
+    input.idempotencyKey ||
+    (durationSeconds > 0 && chargeStart
+      ? `runtime:${row.id}:${chargeStart.getTime()}`
+      : null);
   const { chargedMinutes, chargedCredits } = calculateRuntimeCharge({
     durationSeconds,
     runtimeState,
@@ -261,13 +462,47 @@ export async function settleSessionRuntimeUsage(input: RuntimeUsageInput) {
     highLoadCreditsPerMinute: settings.highLoadCreditsPerMinute,
   });
 
+  if (durationSeconds <= 0 && input.recordZeroCharge === false) {
+    return {
+      id: '',
+      sessionId: row.id,
+      eventType: 'runtime_minutes',
+      runtimeState,
+      durationSeconds: 0,
+      rawCostCredits: 0,
+      chargedCredits: 0,
+      status: 'not_due',
+    };
+  }
+
+  if (chargedCredits <= 0 && input.recordZeroCharge === false) {
+    await db()
+      .update(codeSession)
+      .set({
+        lastBilledAt: billedThrough || endedAt,
+        updatedAt: endedAt,
+      })
+      .where(eq(codeSession.id, row.id));
+    return {
+      id: '',
+      sessionId: row.id,
+      eventType: 'runtime_minutes',
+      runtimeState,
+      durationSeconds,
+      rawCostCredits: 0,
+      chargedCredits: 0,
+      status: 'not_billable',
+    };
+  }
+
   return db().transaction(async (tx: any) => {
-    const event = await createBillingEvent(tx, {
+    const result = await createBillingEvent(tx, {
       userId: input.userId,
       sessionId: row.id,
       agent: normalizeAgent(row.agent),
       model: row.model,
       eventType: 'runtime_minutes',
+      idempotencyKey,
       runtimeState,
       durationSeconds,
       rawCostCredits: chargedCredits,
@@ -283,19 +518,23 @@ export async function settleSessionRuntimeUsage(input: RuntimeUsageInput) {
         model: row.model,
         runtimeState,
         durationSeconds,
+        pendingDurationSeconds,
         chargedMinutes,
         freeMinutesPerSession: settings.freeMinutesPerSession,
       }),
     });
+    const event = result.event;
 
-    await tx
-      .update(codeSession)
-      .set({
-        lastBilledAt: endedAt,
-        billedCredits: sql`${codeSession.billedCredits} + ${event.status === 'charged' ? event.chargedCredits : 0}`,
-        updatedAt: endedAt,
-      })
-      .where(eq(codeSession.id, row.id));
+    if (result.created) {
+      await tx
+        .update(codeSession)
+        .set({
+          lastBilledAt: billedThrough || endedAt,
+          billedCredits: sql`${codeSession.billedCredits} + ${event.status === 'charged' ? event.chargedCredits : 0}`,
+          updatedAt: endedAt,
+        })
+        .where(eq(codeSession.id, row.id));
+    }
 
     return event;
   });
@@ -316,7 +555,7 @@ async function createBillingEvent(
       values.userId,
       values.idempotencyKey
     );
-    if (existing) return existing;
+    if (existing) return { event: existing, created: false };
 
     const event: NewCodeBillingEvent = {
       id: getUuid(),
@@ -337,12 +576,14 @@ async function createBillingEvent(
           values.userId,
           values.idempotencyKey
         );
-        if (existingAfterConflict) return existingAfterConflict;
+        if (existingAfterConflict) {
+          return { event: existingAfterConflict, created: false };
+        }
       }
       throw error;
     }
 
-    if (chargedCredits <= 0) return event;
+    if (chargedCredits <= 0) return { event, created: true };
 
     const { creditId, status } = await settleEventCredits(tx, {
       ...values,
@@ -354,7 +595,7 @@ async function createBillingEvent(
       .set({ creditId, status })
       .where(eq(codeBillingEvent.id, event.id));
 
-    return { ...event, creditId, status };
+    return { event: { ...event, creditId, status }, created: true };
   }
 
   let status = chargedCredits > 0 ? 'charged' : 'recorded';
@@ -380,7 +621,7 @@ async function createBillingEvent(
     createdAt: new Date(),
   };
   await tx.insert(codeBillingEvent).values(event);
-  return event;
+  return { event, created: true };
 }
 
 async function settleEventCredits(
@@ -456,14 +697,23 @@ async function getCodeModelRow(agent: string, model: string) {
 
 function runtimeChargeStart(
   row: CodeSession,
-  settings: CodeBillingSettings
+  settings: CodeBillingSettings,
+  endedAt: Date
 ): Date | null {
   const createdAt = toDate(row.createdAt);
   if (!createdAt) return null;
   const freeUntil = new Date(
     createdAt.getTime() + settings.freeMinutesPerSession * 60_000
   );
-  const lastBilledAt = toDate(row.lastBilledAt) || createdAt;
+  const lastBilledAt = toDate(row.lastBilledAt);
+  if (!lastBilledAt) {
+    const legacyCatchupStart = new Date(
+      endedAt.getTime() - settings.runtimeMeterMaxCatchupMinutes * 60_000
+    );
+    return new Date(
+      Math.max(freeUntil.getTime(), legacyCatchupStart.getTime())
+    );
+  }
   return new Date(Math.max(freeUntil.getTime(), lastBilledAt.getTime()));
 }
 

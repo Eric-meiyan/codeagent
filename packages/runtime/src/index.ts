@@ -58,6 +58,14 @@ interface UsageReportContext {
   requestId: string;
 }
 
+interface ModelAuthorizationResult {
+  authorized: boolean;
+  reason?: string;
+  message?: string;
+  balance?: number;
+  requiredBalance?: number;
+}
+
 function agentFromUrl(url: URL): Agent {
   return url.searchParams.get('agent') === 'codex' ? 'codex' : 'claude';
 }
@@ -784,6 +792,78 @@ function estimateInputTokens(body: ArrayBuffer): number {
   }
 }
 
+function maxOutputTokens(body: ArrayBuffer): number {
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(body)) as Record<
+      string,
+      unknown
+    >;
+    return numberValue(
+      payload.max_tokens ??
+        payload.max_output_tokens ??
+        payload.max_completion_tokens
+    );
+  } catch {
+    return 0;
+  }
+}
+
+async function authorizeModelRequest(
+  env: Env,
+  sessionId: string,
+  body: ArrayBuffer,
+  authorizationKey: string
+): Promise<ModelAuthorizationResult> {
+  if (!env.APP_BASE_URL || !env.BILLING_USAGE_WEBHOOK_SECRET) {
+    return { authorized: true };
+  }
+
+  const target = new URL(env.APP_BASE_URL);
+  target.pathname = `/api/code/sessions/${encodeURIComponent(sessionId)}/usage`;
+  const response = await fetch(target, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-hicode-billing-secret': env.BILLING_USAGE_WEBHOOK_SECRET,
+    },
+    body: JSON.stringify({
+      eventType: 'model_authorize',
+      authorizationKey,
+      estimatedInputTokens: estimateInputTokens(body),
+      maxOutputTokens: maxOutputTokens(body),
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as {
+    code?: number;
+    message?: string;
+    data?: Record<string, unknown>;
+  } | null;
+
+  if (!response.ok || !payload) {
+    throw new Error(
+      `Billing authorization unavailable (${response.status || 503})`
+    );
+  }
+  if (payload.code !== 0) {
+    return {
+      authorized: false,
+      reason:
+        typeof payload.data?.reason === 'string'
+          ? payload.data.reason
+          : 'billing_denied',
+      message: payload.message || 'Billing authorization denied',
+      balance: numberValue(payload.data?.balance),
+      requiredBalance: numberValue(payload.data?.requiredBalance),
+    };
+  }
+
+  return {
+    authorized: payload.data?.authorized !== false,
+    balance: numberValue(payload.data?.balance),
+    requiredBalance: numberValue(payload.data?.requiredBalance),
+  };
+}
+
 async function handleModelGateway(
   request: Request,
   env: Env,
@@ -836,6 +916,44 @@ async function handleModelGateway(
       ? undefined
       : await request.arrayBuffer();
 
+  const usageReportId =
+    sessionId && shouldReportUsage(gatewayPath) ? crypto.randomUUID() : '';
+  const usageIdempotencyKey = usageReportId
+    ? `model:${sessionId}:${usageReportId}`
+    : '';
+  if (usageIdempotencyKey && requestBody) {
+    let authorization: ModelAuthorizationResult;
+    try {
+      authorization = await authorizeModelRequest(
+        env,
+        sessionId,
+        requestBody,
+        usageIdempotencyKey
+      );
+    } catch (error) {
+      return gatewayError(
+        503,
+        error instanceof Error
+          ? error.message
+          : 'Billing authorization unavailable',
+        'hicode_billing_unavailable'
+      );
+    }
+    if (!authorization.authorized) {
+      const status =
+        authorization.reason === 'insufficient_credits'
+          ? 402
+          : authorization.reason === 'session_not_active'
+            ? 409
+            : 503;
+      return gatewayError(
+        status,
+        authorization.message || 'Billing authorization denied',
+        `hicode_${authorization.reason || 'billing_denied'}`
+      );
+    }
+  }
+
   const response = await fetch(upstream, {
     method: request.method,
     headers: upstreamHeaders(request, env, gatewayPath),
@@ -866,10 +984,9 @@ async function handleModelGateway(
     shouldReportUsage(gatewayPath)
   ) {
     const [clientBody, billingBody] = response.body.tee();
-    const reportId = crypto.randomUUID();
     ctx.waitUntil(
       reportUsageFromResponse(billingBody, env, sessionId, {
-        idempotencyKey: `model:${sessionId}:${reportId}`,
+        idempotencyKey: usageIdempotencyKey,
         provider: upstream.hostname,
         endpoint: gatewayPath,
         upstreamStatus: response.status,

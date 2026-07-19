@@ -647,6 +647,7 @@ export const codeSession = table(
     title: text('title').notNull().default(''),
     archiveKey: text('archive_key'),
     archiveDigest: text('archive_digest'),
+    suspensionReason: text('suspension_reason').notNull().default(''),
     lastBilledAt: timestamp('last_billed_at'),
     billedCredits: integer('billed_credits').default(0).notNull(),
     lastActiveAt: timestamp('last_active_at').defaultNow().notNull(),
