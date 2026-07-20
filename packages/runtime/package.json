@@ -5,8 +5,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "vendor:fetch": "node scripts/fetch-vendor.mjs",
-    "deploy": "wrangler deploy",
-    "deploy:worker": "wrangler deploy --containers-rollout=none",
+    "deploy": "wrangler deploy --config wrangler.jsonc",
+    "deploy:worker": "wrangler deploy --config wrangler.jsonc --containers-rollout=none",
     "smoke": "node scripts/remote-smoke-test.mjs"
   },
   "dependencies": {
