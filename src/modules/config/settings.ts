@@ -331,6 +331,14 @@ export function getSettings(): Setting[] {
       defaultValue: 'false',
     },
     {
+      name: 'billing_unpaid_auto_settle_enabled',
+      title: 'Auto-settle collectible unpaid usage',
+      type: 'switch',
+      group: 'usage_billing',
+      tab: 'general',
+      defaultValue: 'true',
+    },
+    {
       name: 'billing_credits_per_cny',
       title: 'Credits per CNY',
       type: 'number',

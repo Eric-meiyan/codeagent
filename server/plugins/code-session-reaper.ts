@@ -16,12 +16,15 @@ export default definePlugin(() => {
 
       const { meterActiveSessions, suspendIdleSessions } =
         await import('@/modules/code/service');
+      const { settleCollectibleBillingDebts } =
+        await import('@/modules/code/billing');
       const now = new Date(controller.scheduledTime);
+      const debts = await settleCollectibleBillingDebts();
       const billing = await meterActiveSessions(now);
       const reaper = await suspendIdleSessions(
         new Date(controller.scheduledTime)
       );
-      console.info('[code-session-maintenance]', { billing, reaper });
+      console.info('[code-session-maintenance]', { debts, billing, reaper });
     }
   );
 });

@@ -67,6 +67,11 @@ interface BillingEvent {
   billingMultiplier: number;
   creditId: string;
   status: string;
+  collectible: number;
+  settlementAttempts: number;
+  lastSettlementAt: string | null;
+  settledAt: string | null;
+  settlementError: string;
   description: string;
   metadata: unknown;
   rawUsage: unknown;
@@ -76,6 +81,8 @@ interface BillingEvent {
 interface BillingSummary {
   total: number;
   chargedCredits: number;
+  unpaidCredits: number;
+  collectibleUnpaidCredits: number;
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
@@ -263,6 +270,9 @@ function CodeSessionsPage() {
             {m['admin.code_sessions.billing_events_count']({
               count: session.billingSummary.total,
             })}
+            {session.billingSummary.unpaidCredits > 0
+              ? ` · ${session.billingSummary.unpaidCredits} unpaid`
+              : ''}
           </p>
         </div>
       ),
@@ -436,9 +446,13 @@ function SessionDetailSheet({
                 icon={<Coins className="size-4" />}
                 label={m['admin.code_sessions.billing_col']()}
                 value={String(detail.billingSummary.chargedCredits)}
-                subValue={m['admin.code_sessions.billing_events_count']({
+                subValue={`${m['admin.code_sessions.billing_events_count']({
                   count: detail.billingSummary.total,
-                })}
+                })}${
+                  detail.billingSummary.unpaidCredits > 0
+                    ? ` · ${detail.billingSummary.unpaidCredits} unpaid`
+                    : ''
+                }`}
               />
             </div>
 
@@ -630,6 +644,15 @@ function BillingItem({ event }: { event: BillingEvent }) {
               {event.description}
             </p>
           )}
+          {event.settlementAttempts > 0 && (
+            <p className="text-muted-foreground mt-1 text-xs">
+              Settlement attempts: {event.settlementAttempts}
+              {event.settlementError ? ` · ${event.settlementError}` : ''}
+              {event.settledAt
+                ? ` · settled ${formatDate(event.settledAt)}`
+                : ''}
+            </p>
+          )}
         </div>
         <span className="text-muted-foreground shrink-0 text-xs">
           {formatDate(event.createdAt)}
@@ -643,6 +666,8 @@ function BillingItem({ event }: { event: BillingEvent }) {
             requestId: event.requestId,
             endpoint: event.endpoint,
             upstreamStatus: event.upstreamStatus,
+            collectible: event.collectible === 1,
+            lastSettlementAt: event.lastSettlementAt,
           })}
         </pre>
       )}

@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 
 import { db } from '@/core/db';
 import {
@@ -31,6 +31,7 @@ export interface CodeBillingSettings {
   requireConfiguredModelCosts: boolean;
   modelGateEnabled: boolean;
   runtimeMeterEnabled: boolean;
+  unpaidAutoSettleEnabled: boolean;
   creditsPerCny: number;
   defaultMultiplier: number;
   freeMinutesPerSession: number;
@@ -148,6 +149,10 @@ export function calculateRuntimeCharge(params: {
   };
 }
 
+export function billingSettlementClaimStatus(id: string) {
+  return `settling:${id.replaceAll('-', '').slice(0, 23)}`;
+}
+
 export function calculateMeteredDuration(params: {
   chargeStart: Date | null;
   endedAt: Date;
@@ -209,6 +214,10 @@ export async function getCodeBillingSettings(): Promise<CodeBillingSettings> {
     runtimeMeterEnabled: boolConfig(
       configs.billing_runtime_meter_enabled,
       false
+    ),
+    unpaidAutoSettleEnabled: boolConfig(
+      configs.billing_unpaid_auto_settle_enabled,
+      true
     ),
     creditsPerCny: numberConfig(configs.billing_credits_per_cny, 100),
     defaultMultiplier: numberConfig(configs.billing_default_multiplier, 200),
@@ -287,7 +296,10 @@ export async function authorizeModelUsage(input: ModelUsageAuthorizationInput) {
     };
   }
 
-  if (settings.requireConfiguredModelCosts && !costsConfigured) {
+  if (
+    (settings.requireConfiguredModelCosts || settings.modelGateEnabled) &&
+    !costsConfigured
+  ) {
     throw new CodeBillingAuthorizationError(
       'model_costs_not_configured',
       'Selected model billing is not configured',
@@ -432,6 +444,15 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
         `Model usage: ${row.model} (${inputTokens} input / ${outputTokens} output tokens)`,
       metadata: jsonText(metadata, 4096),
     });
+    if (result.created && result.event.status === 'charged') {
+      await tx
+        .update(codeSession)
+        .set({
+          billedCredits: sql`${codeSession.billedCredits} + ${result.event.chargedCredits}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(codeSession.id, row.id));
+    }
     return result.event;
   });
 }
@@ -548,6 +569,7 @@ async function createBillingEvent(
 ) {
   const chargedCredits = values.chargedCredits ?? 0;
   const metadata = values.metadata || '';
+  const collectible = values.collectible ?? (chargedCredits > 0 ? 1 : 0);
 
   if (values.idempotencyKey) {
     const existing = await getBillingEventByIdempotencyKey(
@@ -563,6 +585,9 @@ async function createBillingEvent(
       chargedCredits,
       creditId: values.creditId || '',
       status: values.status || (chargedCredits > 0 ? 'pending' : 'recorded'),
+      collectible,
+      settlementAttempts: 0,
+      settlementError: '',
       metadata,
       createdAt: new Date(),
     };
@@ -585,21 +610,34 @@ async function createBillingEvent(
 
     if (chargedCredits <= 0) return { event, created: true };
 
-    const { creditId, status } = await settleEventCredits(tx, {
+    const settled = await settleEventCredits(tx, {
       ...values,
       metadata,
       chargedCredits,
     });
+    const settledAt = new Date();
+    const settlementUpdate = {
+      creditId: settled.creditId,
+      status: settled.status,
+      settlementAttempts: 1,
+      lastSettlementAt: settledAt,
+      settledAt: settled.status === 'charged' ? settledAt : null,
+      settlementError: settled.error,
+    };
     await tx
       .update(codeBillingEvent)
-      .set({ creditId, status })
+      .set(settlementUpdate)
       .where(eq(codeBillingEvent.id, event.id));
 
-    return { event: { ...event, creditId, status }, created: true };
+    return { event: { ...event, ...settlementUpdate }, created: true };
   }
 
   let status = chargedCredits > 0 ? 'charged' : 'recorded';
   let creditId = values.creditId || '';
+  let settlementAttempts = 0;
+  let lastSettlementAt: Date | null = null;
+  let settledAt: Date | null = null;
+  let settlementError = '';
 
   if (chargedCredits > 0) {
     const settled = await settleEventCredits(tx, {
@@ -609,6 +647,10 @@ async function createBillingEvent(
     });
     creditId = settled.creditId;
     status = settled.status;
+    settlementAttempts = 1;
+    lastSettlementAt = new Date();
+    settledAt = status === 'charged' ? lastSettlementAt : null;
+    settlementError = settled.error;
   }
 
   const event: NewCodeBillingEvent = {
@@ -617,6 +659,11 @@ async function createBillingEvent(
     chargedCredits,
     creditId,
     status: values.status || status,
+    collectible,
+    settlementAttempts,
+    lastSettlementAt,
+    settledAt,
+    settlementError,
     metadata,
     createdAt: new Date(),
   };
@@ -626,8 +673,12 @@ async function createBillingEvent(
 
 async function settleEventCredits(
   tx: any,
-  values: Omit<NewCodeBillingEvent, 'id' | 'createdAt' | 'status'> & {
+  values: {
+    userId: string;
+    eventType: string;
     chargedCredits: number;
+    description?: string | null;
+    metadata?: string | null;
   }
 ) {
   const result = await consume({
@@ -646,10 +697,165 @@ async function settleEventCredits(
     return {
       creditId: result.consumedCredit?.id || '',
       status: 'charged',
+      error: '',
     };
   }
 
-  return { creditId: '', status: 'unpaid' };
+  return {
+    creditId: '',
+    status: 'unpaid',
+    error: 'insufficient_credits',
+  };
+}
+
+export async function settleUnpaidBillingEventsForUser(input: {
+  userId: string;
+  limit?: number;
+  tx?: any;
+  enabled?: boolean;
+}) {
+  const enabled =
+    input.enabled ?? (await getCodeBillingSettings()).unpaidAutoSettleEnabled;
+  const result = {
+    enabled,
+    attempted: 0,
+    settled: 0,
+    settledCredits: 0,
+    stoppedForInsufficientCredits: false,
+  };
+  if (!enabled) return result;
+
+  const execute = async (tx: any) => {
+    const rows = await tx
+      .select()
+      .from(codeBillingEvent)
+      .where(
+        and(
+          eq(codeBillingEvent.userId, input.userId),
+          eq(codeBillingEvent.status, 'unpaid'),
+          eq(codeBillingEvent.collectible, 1)
+        )
+      )
+      .orderBy(asc(codeBillingEvent.createdAt))
+      .limit(Math.min(100, Math.max(1, input.limit || 25)));
+
+    for (const row of rows) {
+      const claimStatus = billingSettlementClaimStatus(getUuid());
+      await tx
+        .update(codeBillingEvent)
+        .set({ status: claimStatus })
+        .where(
+          and(
+            eq(codeBillingEvent.id, row.id),
+            eq(codeBillingEvent.status, 'unpaid')
+          )
+        );
+      const [claimed] = await tx
+        .select({ id: codeBillingEvent.id })
+        .from(codeBillingEvent)
+        .where(
+          and(
+            eq(codeBillingEvent.id, row.id),
+            eq(codeBillingEvent.status, claimStatus)
+          )
+        )
+        .limit(1);
+      if (!claimed) continue;
+
+      result.attempted += 1;
+      const settled = await settleEventCredits(tx, {
+        userId: row.userId,
+        eventType: row.eventType,
+        chargedCredits: row.chargedCredits,
+        description: row.description,
+        metadata: row.metadata,
+      });
+      const attemptedAt = new Date();
+      await tx
+        .update(codeBillingEvent)
+        .set({
+          creditId: settled.creditId,
+          status: settled.status,
+          settlementAttempts: sql`${codeBillingEvent.settlementAttempts} + 1`,
+          lastSettlementAt: attemptedAt,
+          settledAt: settled.status === 'charged' ? attemptedAt : null,
+          settlementError: settled.error,
+        })
+        .where(
+          and(
+            eq(codeBillingEvent.id, row.id),
+            eq(codeBillingEvent.status, claimStatus)
+          )
+        );
+
+      if (settled.status !== 'charged') {
+        result.stoppedForInsufficientCredits = true;
+        break;
+      }
+
+      if (row.sessionId) {
+        await tx
+          .update(codeSession)
+          .set({
+            billedCredits: sql`${codeSession.billedCredits} + ${row.chargedCredits}`,
+            updatedAt: attemptedAt,
+          })
+          .where(eq(codeSession.id, row.sessionId));
+      }
+      result.settled += 1;
+      result.settledCredits += row.chargedCredits;
+    }
+
+    return result;
+  };
+
+  if (input.tx) return execute(input.tx);
+  return db().transaction(execute);
+}
+
+export async function settleCollectibleBillingDebts(limit = 25) {
+  const settings = await getCodeBillingSettings();
+  const result = {
+    enabled: settings.unpaidAutoSettleEnabled,
+    users: 0,
+    attempted: 0,
+    settled: 0,
+    settledCredits: 0,
+    failed: 0,
+  };
+  if (!result.enabled) return result;
+
+  const users = await db()
+    .selectDistinct({ userId: codeBillingEvent.userId })
+    .from(codeBillingEvent)
+    .where(
+      and(
+        eq(codeBillingEvent.status, 'unpaid'),
+        eq(codeBillingEvent.collectible, 1)
+      )
+    )
+    .limit(Math.min(100, Math.max(1, limit)));
+
+  for (const row of users) {
+    result.users += 1;
+    try {
+      const settled = await settleUnpaidBillingEventsForUser({
+        userId: row.userId,
+        enabled: true,
+      });
+      result.attempted += settled.attempted;
+      result.settled += settled.settled;
+      result.settledCredits += settled.settledCredits;
+    } catch (error) {
+      result.failed += 1;
+      console.warn('[billing-debt-settlement] user failed', {
+        userId: row.userId,
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  return result;
 }
 
 async function getBillingEventByIdempotencyKey(

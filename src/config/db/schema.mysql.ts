@@ -688,6 +688,13 @@ export const codeBillingEvent = table(
     billingMultiplier: int('billing_multiplier').notNull().default(200),
     creditId: varchar191('credit_id'),
     status: varchar('status', { length: 32 }).notNull().default('charged'),
+    collectible: int('collectible').notNull().default(0),
+    settlementAttempts: int('settlement_attempts').notNull().default(0),
+    lastSettlementAt: timestamp('last_settlement_at'),
+    settledAt: timestamp('settled_at'),
+    settlementError: varchar('settlement_error', { length: 500 })
+      .notNull()
+      .default(''),
     description: text('description'),
     metadata: longtext('metadata'),
     rawUsage: varchar('raw_usage', { length: 2048 }).notNull().default(''),
@@ -697,6 +704,11 @@ export const codeBillingEvent = table(
     index('idx_code_billing_event_user_created').on(t.userId, t.createdAt),
     index('idx_code_billing_event_session').on(t.sessionId),
     index('idx_code_billing_event_type').on(t.eventType),
+    index('idx_code_billing_event_collectible_status').on(
+      t.collectible,
+      t.status,
+      t.createdAt
+    ),
     uniqueIndex('idx_code_billing_event_idempotency').on(t.idempotencyKey),
   ]
 );

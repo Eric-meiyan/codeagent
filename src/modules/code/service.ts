@@ -1517,7 +1517,7 @@ async function ensureCanStartBillableSession(
   }
 
   if (
-    settings.requireConfiguredModelCosts &&
+    (settings.requireConfiguredModelCosts || settings.modelGateEnabled) &&
     model &&
     !hasConfiguredModelTokenCosts(model)
   ) {

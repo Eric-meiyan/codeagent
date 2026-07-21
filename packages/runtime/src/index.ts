@@ -1,5 +1,11 @@
 import { Container } from '@cloudflare/containers';
 
+import {
+  deliverOrQueueUsageReport,
+  flushPendingUsageReports,
+  type UsageReportPayload,
+} from './billing-outbox';
+
 interface Env {
   INTEGRATED_SESSION_CONTAINER: DurableObjectNamespace<IntegratedSessionContainer>;
   WORKSPACE_ARCHIVES: R2Bucket;
@@ -1013,49 +1019,39 @@ async function reportUsageFromResponse(
   sessionId: string,
   report: UsageReportContext
 ) {
-  if (!env.APP_BASE_URL || !env.BILLING_USAGE_WEBHOOK_SECRET) return;
-
   const text = await new Response(body).text().catch(() => '');
   const usage = extractTokenUsage(text);
   if (!usage.inputTokens && !usage.outputTokens && !usage.cachedInputTokens) {
     return;
   }
 
-  const target = new URL(env.APP_BASE_URL);
-  target.pathname = `/api/code/sessions/${encodeURIComponent(sessionId)}/usage`;
-  await fetch(target, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-hicode-billing-secret': env.BILLING_USAGE_WEBHOOK_SECRET,
+  const payload: UsageReportPayload = {
+    eventType: 'model_tokens',
+    idempotencyKey: report.idempotencyKey,
+    provider: report.provider,
+    endpoint: report.endpoint,
+    upstreamStatus: report.upstreamStatus,
+    requestId: report.requestId,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    cachedInputTokens: usage.cachedInputTokens,
+    rawUsage: {
+      aggregate: {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cachedInputTokens: usage.cachedInputTokens,
+      },
+      records: usage.rawUsage.slice(-10),
     },
-    body: JSON.stringify({
-      eventType: 'model_tokens',
+    metadata: {
       idempotencyKey: report.idempotencyKey,
       provider: report.provider,
       endpoint: report.endpoint,
       upstreamStatus: report.upstreamStatus,
       requestId: report.requestId,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      cachedInputTokens: usage.cachedInputTokens,
-      rawUsage: {
-        aggregate: {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          cachedInputTokens: usage.cachedInputTokens,
-        },
-        records: usage.rawUsage.slice(-10),
-      },
-      metadata: {
-        idempotencyKey: report.idempotencyKey,
-        provider: report.provider,
-        endpoint: report.endpoint,
-        upstreamStatus: report.upstreamStatus,
-        requestId: report.requestId,
-      },
-    }),
-  }).catch(() => undefined);
+    },
+  };
+  await deliverOrQueueUsageReport(env, sessionId, payload);
 }
 
 function extractTokenUsage(text: string): TokenUsage {
@@ -1359,6 +1355,25 @@ export default {
     return json(
       { ok: false, error: 'not_found', path: url.pathname },
       { status: 404 }
+    );
+  },
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext
+  ) {
+    ctx.waitUntil(
+      flushPendingUsageReports(env)
+        .then((result) => {
+          if (result.scanned > 0) {
+            console.info('[billing-usage-outbox]', result);
+          }
+        })
+        .catch((error) => {
+          console.error('[billing-usage-outbox] flush failed', {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        })
     );
   },
 };

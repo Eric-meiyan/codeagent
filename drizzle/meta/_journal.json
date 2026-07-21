@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1782999971329,
+      "tag": "0000_dazzling_shocker",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783006966114,
+      "tag": "0001_serious_silver_fox",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783043853380,
+      "tag": "0002_code_usage_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783173252199,
+      "tag": "0003_curious_gamma_corps",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783747200000,
+      "tag": "0004_billing_usage_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784390400000,
+      "tag": "0005_incremental_billing_gate",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784630879108,
+      "tag": "0006_bouncy_marvel_zombies",
+      "breakpoints": true
+    }
+  ]
+}

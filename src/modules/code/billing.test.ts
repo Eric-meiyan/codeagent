@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict';
 
 import {
+  billingSettlementClaimStatus,
   calculateMeteredDuration,
   calculateModelTokenCharge,
   calculateRuntimeCharge,
 } from './billing';
+
+assert.equal(
+  billingSettlementClaimStatus('019f3fef-7a73-7c12-a91d-1f87b503e79d'),
+  'settling:019f3fef7a737c12a91d1f8'
+);
+assert.equal(
+  billingSettlementClaimStatus('019f3fef-7a73-7c12-a91d-1f87b503e79d').length,
+  32
+);
 
 assert.deepEqual(
   calculateModelTokenCharge({

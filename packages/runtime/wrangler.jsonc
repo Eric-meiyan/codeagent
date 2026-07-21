@@ -7,6 +7,12 @@
     "ANTHROPIC_API_BASE_URL": "https://yunwu.ai",
     "APP_BASE_URL": "https://hicode.run",
   },
+  "triggers": {
+    "crons": ["* * * * *"],
+  },
+  "observability": {
+    "enabled": true,
+  },
   "containers": [
     {
       "class_name": "IntegratedSessionContainer",
