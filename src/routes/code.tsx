@@ -13,10 +13,13 @@ import {
   FileDiff,
   Focus,
   History,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   Plus,
   Square,
   Terminal,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -118,6 +121,8 @@ interface CodeLoaderData {
   runtimeBase: string;
 }
 
+const CODE_SIDEBAR_COLLAPSED_KEY = 'hicode:code-sidebar-collapsed';
+
 function CodeWorkspacePage() {
   const loader = Route.useLoaderData() as CodeLoaderData;
   const balanceQuery = useQuery({
@@ -165,6 +170,8 @@ function CodeWorkspacePage() {
   const [terminalElement, setTerminalElement] = useState<HTMLDivElement | null>(
     null
   );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const currentSession =
     sessions.find((session) => session.id === sessionId) ??
@@ -311,6 +318,7 @@ function CodeWorkspacePage() {
     focused,
     mode,
     reconnect,
+    resize: resizeTerminal,
     focus: focusTerminal,
     interrupt,
     scrollToBottom,
@@ -331,6 +339,17 @@ function CodeWorkspacePage() {
     currentSession,
     archiveCheckpoint
   );
+
+  useEffect(() => {
+    setSidebarCollapsed(
+      window.localStorage.getItem(CODE_SIDEBAR_COLLAPSED_KEY) === 'true'
+    );
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(resizeTerminal, 220);
+    return () => window.clearTimeout(timer);
+  }, [mobileSidebarOpen, resizeTerminal, sidebarCollapsed]);
 
   useEffect(() => {
     setRuntimeIssue('');
@@ -501,6 +520,7 @@ function CodeWorkspacePage() {
       markSessionRestoreReady(session.id);
       setSelectedAgent(session.agent);
       setSelectedModel(session.model);
+      setMobileSidebarOpen(false);
       setPreviewNonce(Date.now());
       const message = `${m['code.actions.started']()}: ${shortId(session.id)}`;
       setNewSessionMsg(
@@ -576,6 +596,7 @@ function CodeWorkspacePage() {
       markSessionRestorePending(session.id);
       setSelectedAgent(session.agent);
       setSelectedModel(session.model);
+      setMobileSidebarOpen(false);
       setRuntimeIssue('');
       setPreviewNonce(Date.now());
       setNewSessionMsg(
@@ -666,6 +687,14 @@ function CodeWorkspacePage() {
     }
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      window.localStorage.setItem(CODE_SIDEBAR_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  };
+
   return (
     <div className="bg-background text-foreground min-h-screen">
       <header className="border-border bg-background/90 sticky top-0 z-40 border-b backdrop-blur">
@@ -718,10 +747,37 @@ function CodeWorkspacePage() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[1600px] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <aside className="border-border bg-card rounded-lg border p-4 lg:min-h-[calc(100vh-6rem)]">
-          <div className="flex items-center justify-between">
-            <div>
+      {mobileSidebarOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 top-16 z-40 bg-black/35 lg:hidden"
+          aria-label={m['code.sidebar.close']()}
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      <main
+        className={cn(
+          'mx-auto grid max-w-[1600px] gap-4 px-4 py-4 transition-[grid-template-columns] duration-200 sm:px-6',
+          sidebarCollapsed
+            ? 'lg:grid-cols-[56px_minmax(0,1fr)]'
+            : 'lg:grid-cols-[260px_minmax(0,1fr)]'
+        )}
+      >
+        <aside
+          className={cn(
+            'border-border bg-card fixed top-20 bottom-4 left-4 z-50 max-h-[calc(100vh-6rem)] w-[min(320px,calc(100vw-2rem))] overflow-y-auto rounded-lg border p-4 shadow-xl transition-[width,padding] duration-200 lg:static lg:z-auto lg:block lg:max-h-none lg:min-h-[calc(100vh-6rem)] lg:w-auto lg:overflow-visible lg:shadow-none',
+            mobileSidebarOpen ? 'block' : 'hidden lg:block',
+            sidebarCollapsed && 'lg:p-2'
+          )}
+        >
+          <div
+            className={cn(
+              'flex items-center justify-between',
+              sidebarCollapsed && 'lg:flex-col lg:gap-3'
+            )}
+          >
+            <div className={cn(sidebarCollapsed && 'lg:hidden')}>
               <p className="text-sm font-semibold">
                 {m['code.sessions.title']()}
               </p>
@@ -729,20 +785,64 @@ function CodeWorkspacePage() {
                 {m['code.sessions.subtitle']()}
               </p>
             </div>
-            <Button
-              size="icon"
-              className="size-8 rounded-full"
-              aria-label={m['code.sessions.new']()}
-              disabled={
-                Boolean(busyAction) || restoreInProgress || !canCreateSession
-              }
-              onClick={requestNewSession}
+            <div
+              className={cn(
+                'flex items-center gap-2',
+                sidebarCollapsed && 'lg:flex-col'
+              )}
             >
-              <Plus className="size-4" />
-            </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="hidden size-8 lg:inline-flex"
+                aria-label={
+                  sidebarCollapsed
+                    ? m['code.sidebar.expand']()
+                    : m['code.sidebar.collapse']()
+                }
+                title={
+                  sidebarCollapsed
+                    ? m['code.sidebar.expand']()
+                    : m['code.sidebar.collapse']()
+                }
+                aria-expanded={!sidebarCollapsed}
+                onClick={toggleSidebar}
+              >
+                {sidebarCollapsed ? (
+                  <PanelLeftOpen className="size-4" />
+                ) : (
+                  <PanelLeftClose className="size-4" />
+                )}
+              </Button>
+              <Button
+                size="icon"
+                className="size-8 rounded-full"
+                aria-label={m['code.sessions.new']()}
+                disabled={
+                  Boolean(busyAction) || restoreInProgress || !canCreateSession
+                }
+                onClick={requestNewSession}
+              >
+                <Plus className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="size-8 lg:hidden"
+                aria-label={m['code.sidebar.close']()}
+                title={m['code.sidebar.close']()}
+                onClick={() => setMobileSidebarOpen(false)}
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
           </div>
 
-          <div className="mt-5 space-y-2">
+          <div
+            className={cn('mt-5 space-y-2', sidebarCollapsed && 'lg:hidden')}
+          >
             <Label className="text-muted-foreground text-xs">
               {m['code.agent.new_session']()}
             </Label>
@@ -768,7 +868,9 @@ function CodeWorkspacePage() {
             </Select>
           </div>
 
-          <div className="mt-4 space-y-2">
+          <div
+            className={cn('mt-4 space-y-2', sidebarCollapsed && 'lg:hidden')}
+          >
             <Label className="text-muted-foreground text-xs">
               {m['code.model.new_session']()}
             </Label>
@@ -798,7 +900,10 @@ function CodeWorkspacePage() {
           {newSessionMsg && (
             <p
               aria-live="polite"
-              className="text-muted-foreground mt-3 rounded-md border border-dashed px-3 py-2 text-xs leading-5"
+              className={cn(
+                'text-muted-foreground mt-3 rounded-md border border-dashed px-3 py-2 text-xs leading-5',
+                sidebarCollapsed && 'lg:hidden'
+              )}
             >
               {newSessionMsg}
             </p>
@@ -807,7 +912,10 @@ function CodeWorkspacePage() {
           {newSessionIssue && (
             <div
               role="alert"
-              className="border-destructive/40 bg-destructive/5 mt-3 rounded-md border px-3 py-3 text-xs leading-5"
+              className={cn(
+                'border-destructive/40 bg-destructive/5 mt-3 rounded-md border px-3 py-3 text-xs leading-5',
+                sidebarCollapsed && 'lg:hidden'
+              )}
             >
               <div className="text-destructive flex items-start gap-2 font-medium">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -836,7 +944,9 @@ function CodeWorkspacePage() {
             </div>
           )}
 
-          <div className="mt-6 space-y-2">
+          <div
+            className={cn('mt-6 space-y-2', sidebarCollapsed && 'lg:hidden')}
+          >
             {sessions.length === 0 && (
               <p className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">
                 {m['code.sessions.empty']()}
@@ -854,6 +964,7 @@ function CodeWorkspacePage() {
                   setSessionId(session.id);
                   setSelectedAgent(session.agent);
                   setSelectedModel(session.model);
+                  setMobileSidebarOpen(false);
                 }}
               >
                 <span
@@ -880,7 +991,12 @@ function CodeWorkspacePage() {
             ))}
           </div>
 
-          <div className="border-border mt-6 border-t pt-5">
+          <div
+            className={cn(
+              'border-border mt-6 border-t pt-5',
+              sidebarCollapsed && 'lg:hidden'
+            )}
+          >
             <div className="mb-3 flex items-center gap-2 text-xs font-medium">
               <History className="text-muted-foreground size-3.5" />
               {m['code.sessions.archived_title']()}
@@ -921,7 +1037,12 @@ function CodeWorkspacePage() {
             </div>
           </div>
 
-          <div className="border-border mt-6 rounded-lg border p-3">
+          <div
+            className={cn(
+              'border-border mt-6 rounded-lg border p-3',
+              sidebarCollapsed && 'lg:hidden'
+            )}
+          >
             <div className="mb-3 flex items-center gap-2 text-sm font-medium">
               <Cloud className="text-primary size-4" />
               {m['code.runtime.title']()}
@@ -962,7 +1083,19 @@ function CodeWorkspacePage() {
         <section className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(800px,1fr)_320px]">
           <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
             <div className="border-border bg-background/80 flex items-center justify-between border-b px-4 py-3">
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="-ml-2 size-7 shrink-0 lg:hidden"
+                  aria-label={m['code.sidebar.open']()}
+                  title={m['code.sidebar.open']()}
+                  aria-expanded={mobileSidebarOpen}
+                  onClick={() => setMobileSidebarOpen(true)}
+                >
+                  <PanelLeftOpen className="size-4" />
+                </Button>
                 <Terminal className="text-muted-foreground size-4" />
                 <span className="text-sm font-medium">
                   {m['code.terminal.title']()}

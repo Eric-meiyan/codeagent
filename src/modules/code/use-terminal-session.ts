@@ -43,6 +43,7 @@ export function useTerminalSession({
   focused: boolean;
   mode: TerminalConnectionMode;
   reconnect: () => void;
+  resize: () => void;
   focus: () => void;
   interrupt: () => void;
   scrollToBottom: () => void;
@@ -412,6 +413,10 @@ export function useTerminalSession({
     setConnectNonce((value) => value + 1);
   }, [sessionId]);
 
+  const resize = useCallback(() => {
+    scheduleResizeBurst(true);
+  }, [scheduleResizeBurst]);
+
   useEffect(() => {
     let disposed = false;
     let removeWindowResize: (() => void) | null = null;
@@ -553,6 +558,7 @@ export function useTerminalSession({
     focused,
     mode,
     reconnect,
+    resize,
     focus,
     interrupt,
     scrollToBottom,
