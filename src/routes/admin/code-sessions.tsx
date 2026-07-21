@@ -60,6 +60,7 @@ interface BillingEvent {
   runtimeState: string;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationInputTokens: number;
   cachedInputTokens: number;
   durationSeconds: number;
   rawCostCredits: number;
@@ -85,6 +86,7 @@ interface BillingSummary {
   collectibleUnpaidCredits: number;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationInputTokens: number;
   cachedInputTokens: number;
   durationSeconds: number;
   latest: BillingEvent | null;
@@ -638,6 +640,9 @@ function BillingItem({ event }: { event: BillingEvent }) {
               input: event.inputTokens,
               output: event.outputTokens,
             })}
+            {event.cacheCreationInputTokens || event.cachedInputTokens
+              ? ` · cache ${event.cacheCreationInputTokens}/${event.cachedInputTokens}`
+              : ''}
           </p>
           {event.description && (
             <p className="text-muted-foreground mt-1 text-xs">

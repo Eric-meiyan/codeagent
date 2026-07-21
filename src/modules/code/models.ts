@@ -24,6 +24,7 @@ export interface CodeModelView {
   description: string;
   inputTokenCostCreditsPer1m: number;
   outputTokenCostCreditsPer1m: number;
+  cacheCreationInputTokenCostCreditsPer1m: number;
   cachedInputTokenCostCreditsPer1m: number;
   billingMultiplier: number;
   enabled: boolean;
@@ -59,6 +60,7 @@ export interface CodeModelInput {
   description?: unknown;
   inputTokenCostCreditsPer1m?: unknown;
   outputTokenCostCreditsPer1m?: unknown;
+  cacheCreationInputTokenCostCreditsPer1m?: unknown;
   cachedInputTokenCostCreditsPer1m?: unknown;
   billingMultiplier?: unknown;
   enabled?: unknown;
@@ -75,6 +77,7 @@ type NormalizedCodeModelInput = {
   description: string;
   inputTokenCostCreditsPer1m: number;
   outputTokenCostCreditsPer1m: number;
+  cacheCreationInputTokenCostCreditsPer1m: number;
   cachedInputTokenCostCreditsPer1m: number;
   billingMultiplier: number;
   enabled: boolean;
@@ -99,6 +102,9 @@ export function toCodeModelView(row: CodeModel): CodeModelView {
     description: row.description || '',
     inputTokenCostCreditsPer1m: Number(row.inputTokenCostCreditsPer1m || 0),
     outputTokenCostCreditsPer1m: Number(row.outputTokenCostCreditsPer1m || 0),
+    cacheCreationInputTokenCostCreditsPer1m: Number(
+      row.cacheCreationInputTokenCostCreditsPer1m || 0
+    ),
     cachedInputTokenCostCreditsPer1m: Number(
       row.cachedInputTokenCostCreditsPer1m || 0
     ),
@@ -262,6 +268,9 @@ export async function updateCodeModel(id: string, input: CodeModelInput) {
       outputTokenCostCreditsPer1m:
         input.outputTokenCostCreditsPer1m ??
         existing.outputTokenCostCreditsPer1m,
+      cacheCreationInputTokenCostCreditsPer1m:
+        input.cacheCreationInputTokenCostCreditsPer1m ??
+        existing.cacheCreationInputTokenCostCreditsPer1m,
       cachedInputTokenCostCreditsPer1m:
         input.cachedInputTokenCostCreditsPer1m ??
         existing.cachedInputTokenCostCreditsPer1m,
@@ -360,6 +369,9 @@ function normalizeInput(
     ),
     outputTokenCostCreditsPer1m: nonNegativeNumberValue(
       input.outputTokenCostCreditsPer1m
+    ),
+    cacheCreationInputTokenCostCreditsPer1m: nonNegativeNumberValue(
+      input.cacheCreationInputTokenCostCreditsPer1m
     ),
     cachedInputTokenCostCreditsPer1m: nonNegativeNumberValue(
       input.cachedInputTokenCostCreditsPer1m

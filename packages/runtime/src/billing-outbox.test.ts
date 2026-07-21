@@ -49,6 +49,7 @@ const payload: UsageReportPayload = {
   requestId: 'request-1',
   inputTokens: 120,
   outputTokens: 30,
+  cacheCreationInputTokens: 5,
   cachedInputTokens: 10,
   rawUsage: { input_tokens: 120, output_tokens: 30 },
   metadata: { source: 'test' },

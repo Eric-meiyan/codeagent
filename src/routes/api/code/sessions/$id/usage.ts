@@ -62,6 +62,8 @@ async function POST({
           sessionId: params.id,
           inputTokens: body.inputTokens ?? body.input_tokens,
           outputTokens: body.outputTokens ?? body.output_tokens,
+          cacheCreationInputTokens:
+            body.cacheCreationInputTokens ?? body.cache_creation_input_tokens,
           cachedInputTokens: body.cachedInputTokens ?? body.cached_input_tokens,
           idempotencyKey: body.idempotencyKey ?? body.idempotency_key,
           provider: body.provider,

@@ -12,6 +12,7 @@ export interface UsageReportPayload {
   requestId: string;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationInputTokens: number;
   cachedInputTokens: number;
   rawUsage: unknown;
   metadata: Record<string, unknown>;

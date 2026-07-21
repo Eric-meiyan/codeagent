@@ -78,6 +78,7 @@ export interface ModelTokenUsageInput {
   sessionId: string;
   inputTokens?: unknown;
   outputTokens?: unknown;
+  cacheCreationInputTokens?: unknown;
   cachedInputTokens?: unknown;
   idempotencyKey?: unknown;
   provider?: unknown;
@@ -105,15 +106,19 @@ export interface RuntimeUsageInput {
 export function calculateModelTokenCharge(params: {
   inputTokens: number;
   outputTokens: number;
+  cacheCreationInputTokens: number;
   cachedInputTokens: number;
   inputTokenCostCreditsPer1m: number;
   outputTokenCostCreditsPer1m: number;
+  cacheCreationInputTokenCostCreditsPer1m: number;
   cachedInputTokenCostCreditsPer1m: number;
   billingMultiplier: number;
 }) {
   const inputCost =
     params.inputTokens * params.inputTokenCostCreditsPer1m +
     params.outputTokens * params.outputTokenCostCreditsPer1m +
+    params.cacheCreationInputTokens *
+      params.cacheCreationInputTokenCostCreditsPer1m +
     params.cachedInputTokens * params.cachedInputTokenCostCreditsPer1m;
 
   const rawCostCredits =
@@ -321,6 +326,7 @@ export async function authorizeModelUsage(input: ModelUsageAuthorizationInput) {
   const estimated = calculateModelTokenCharge({
     inputTokens: estimatedInputTokens,
     outputTokens: maxOutputTokens,
+    cacheCreationInputTokens: 0,
     cachedInputTokens: 0,
     inputTokenCostCreditsPer1m: positiveInteger(
       model?.inputTokenCostCreditsPer1m,
@@ -328,6 +334,10 @@ export async function authorizeModelUsage(input: ModelUsageAuthorizationInput) {
     ),
     outputTokenCostCreditsPer1m: positiveInteger(
       model?.outputTokenCostCreditsPer1m,
+      0
+    ),
+    cacheCreationInputTokenCostCreditsPer1m: positiveInteger(
+      model?.cacheCreationInputTokenCostCreditsPer1m,
       0
     ),
     cachedInputTokenCostCreditsPer1m: positiveInteger(
@@ -378,6 +388,9 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
   );
   const inputTokens = nonNegativeInteger(input.inputTokens);
   const outputTokens = nonNegativeInteger(input.outputTokens);
+  const cacheCreationInputTokens = nonNegativeInteger(
+    input.cacheCreationInputTokens
+  );
   const cachedInputTokens = nonNegativeInteger(input.cachedInputTokens);
   const idempotencyKey = optionalText(input.idempotencyKey, 255) || null;
   const provider =
@@ -398,12 +411,14 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
     idempotencyKey,
     inputTokens,
     outputTokens,
+    cacheCreationInputTokens,
     cachedInputTokens,
   };
 
   const { rawCostCredits, chargedCredits } = calculateModelTokenCharge({
     inputTokens,
     outputTokens,
+    cacheCreationInputTokens,
     cachedInputTokens,
     inputTokenCostCreditsPer1m: positiveInteger(
       model?.inputTokenCostCreditsPer1m,
@@ -411,6 +426,10 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
     ),
     outputTokenCostCreditsPer1m: positiveInteger(
       model?.outputTokenCostCreditsPer1m,
+      0
+    ),
+    cacheCreationInputTokenCostCreditsPer1m: positiveInteger(
+      model?.cacheCreationInputTokenCostCreditsPer1m,
       0
     ),
     cachedInputTokenCostCreditsPer1m: positiveInteger(
@@ -434,10 +453,12 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
       requestId,
       inputTokens,
       outputTokens,
+      cacheCreationInputTokens,
       cachedInputTokens,
       rawUsage,
       rawCostCredits,
-      chargedCredits: settings.enabled ? chargedCredits : 0,
+      chargedCredits:
+        settings.enabled && settings.modelGateEnabled ? chargedCredits : 0,
       billingMultiplier: multiplier,
       description:
         input.description ||
@@ -527,7 +548,8 @@ export async function settleSessionRuntimeUsage(input: RuntimeUsageInput) {
       runtimeState,
       durationSeconds,
       rawCostCredits: chargedCredits,
-      chargedCredits: settings.enabled ? chargedCredits : 0,
+      chargedCredits:
+        settings.enabled && settings.runtimeMeterEnabled ? chargedCredits : 0,
       billingMultiplier: 100,
       description:
         input.description ||

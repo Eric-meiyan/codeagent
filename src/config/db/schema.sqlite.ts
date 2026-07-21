@@ -674,6 +674,11 @@ export const codeModel = table(
     outputTokenCostCreditsPer1m: integer('output_token_cost_credits_per_1m')
       .notNull()
       .default(0),
+    cacheCreationInputTokenCostCreditsPer1m: integer(
+      'cache_creation_input_token_cost_credits_per_1m'
+    )
+      .notNull()
+      .default(0),
     cachedInputTokenCostCreditsPer1m: integer(
       'cached_input_token_cost_credits_per_1m'
     )
@@ -788,6 +793,9 @@ export const codeBillingEvent = table(
     runtimeState: text('runtime_state').notNull().default(''),
     inputTokens: integer('input_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull().default(0),
+    cacheCreationInputTokens: integer('cache_creation_input_tokens')
+      .notNull()
+      .default(0),
     cachedInputTokens: integer('cached_input_tokens').notNull().default(0),
     durationSeconds: integer('duration_seconds').notNull().default(0),
     rawCostCredits: integer('raw_cost_credits').notNull().default(0),

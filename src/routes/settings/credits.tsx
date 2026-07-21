@@ -229,6 +229,9 @@ function creditUsageDetail(row: CreditRow) {
   const requestId = textValue(metadata.requestId);
   const inputTokens = numberValue(metadata.inputTokens);
   const outputTokens = numberValue(metadata.outputTokens);
+  const cacheCreationInputTokens = numberValue(
+    metadata.cacheCreationInputTokens
+  );
   const cachedInputTokens = numberValue(metadata.cachedInputTokens);
   const durationSeconds = numberValue(metadata.durationSeconds);
 
@@ -236,8 +239,15 @@ function creditUsageDetail(row: CreditRow) {
   if (sessionId) parts.push(`session ${shortId(sessionId)}`);
   if (model) parts.push(model);
   if (endpoint) parts.push(endpoint);
-  if (inputTokens || outputTokens || cachedInputTokens) {
-    parts.push(`tokens ${inputTokens}/${outputTokens}/${cachedInputTokens}`);
+  if (
+    inputTokens ||
+    outputTokens ||
+    cacheCreationInputTokens ||
+    cachedInputTokens
+  ) {
+    parts.push(
+      `tokens ${inputTokens}/${outputTokens} · cache ${cacheCreationInputTokens}/${cachedInputTokens}`
+    );
   }
   if (durationSeconds)
     parts.push(`runtime ${Math.ceil(durationSeconds / 60)}m`);

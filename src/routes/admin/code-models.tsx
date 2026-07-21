@@ -64,6 +64,7 @@ interface CodeModelForm {
   description: string;
   inputTokenCostCreditsPer1m: number;
   outputTokenCostCreditsPer1m: number;
+  cacheCreationInputTokenCostCreditsPer1m: number;
   cachedInputTokenCostCreditsPer1m: number;
   billingMultiplier: number;
   enabled: boolean;
@@ -80,6 +81,7 @@ const emptyForm: CodeModelForm = {
   description: '',
   inputTokenCostCreditsPer1m: 0,
   outputTokenCostCreditsPer1m: 0,
+  cacheCreationInputTokenCostCreditsPer1m: 0,
   cachedInputTokenCostCreditsPer1m: 0,
   billingMultiplier: 200,
   enabled: true,
@@ -191,6 +193,8 @@ function CodeModelsPage() {
       description: model.description,
       inputTokenCostCreditsPer1m: model.inputTokenCostCreditsPer1m,
       outputTokenCostCreditsPer1m: model.outputTokenCostCreditsPer1m,
+      cacheCreationInputTokenCostCreditsPer1m:
+        model.cacheCreationInputTokenCostCreditsPer1m,
       cachedInputTokenCostCreditsPer1m: model.cachedInputTokenCostCreditsPer1m,
       billingMultiplier: model.billingMultiplier,
       enabled: model.enabled,
@@ -264,7 +268,10 @@ function CodeModelsPage() {
           <div className="text-muted-foreground font-mono">
             <p>in {model.inputTokenCostCreditsPer1m}/1M</p>
             <p>out {model.outputTokenCostCreditsPer1m}/1M</p>
-            <p>cache {model.cachedInputTokenCostCreditsPer1m}/1M</p>
+            <p>
+              cache write {model.cacheCreationInputTokenCostCreditsPer1m}/1M
+            </p>
+            <p>cache read {model.cachedInputTokenCostCreditsPer1m}/1M</p>
             <p>x{(model.billingMultiplier / 100).toFixed(2)}</p>
           </div>
           <Badge
@@ -575,6 +582,25 @@ function renderFormFields(
             onChange({
               ...values,
               outputTokenCostCreditsPer1m: Number(event.target.value) || 0,
+            })
+          }
+          placeholder="0"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>
+          {m['admin.code_models.cache_creation_input_cost_field']()}
+        </Label>
+        <Input
+          type="number"
+          min={0}
+          value={values.cacheCreationInputTokenCostCreditsPer1m}
+          onChange={(event) =>
+            onChange({
+              ...values,
+              cacheCreationInputTokenCostCreditsPer1m:
+                Number(event.target.value) || 0,
             })
           }
           placeholder="0"

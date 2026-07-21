@@ -1,0 +1,2 @@
+ALTER TABLE `code_billing_event` ADD `cache_creation_input_tokens` integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE `code_model` ADD `cache_creation_input_token_cost_credits_per_1m` integer DEFAULT 0 NOT NULL;

@@ -20,13 +20,30 @@ assert.deepEqual(
   calculateModelTokenCharge({
     inputTokens: 100_000,
     outputTokens: 0,
+    cacheCreationInputTokens: 0,
     cachedInputTokens: 0,
     inputTokenCostCreditsPer1m: 1000,
     outputTokenCostCreditsPer1m: 3000,
+    cacheCreationInputTokenCostCreditsPer1m: 125,
     cachedInputTokenCostCreditsPer1m: 100,
     billingMultiplier: 200,
   }),
   { rawCostCredits: 100, chargedCredits: 200 }
+);
+
+assert.deepEqual(
+  calculateModelTokenCharge({
+    inputTokens: 1,
+    outputTokens: 13,
+    cacheCreationInputTokens: 873,
+    cachedInputTokens: 3718,
+    inputTokenCostCreditsPer1m: 150,
+    outputTokenCostCreditsPer1m: 750,
+    cacheCreationInputTokenCostCreditsPer1m: 188,
+    cachedInputTokenCostCreditsPer1m: 15,
+    billingMultiplier: 200,
+  }),
+  { rawCostCredits: 1, chargedCredits: 1 }
 );
 
 assert.deepEqual(
