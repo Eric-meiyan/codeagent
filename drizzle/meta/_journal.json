@@ -57,6 +57,34 @@
       "when": 1784632812150,
       "tag": "0007_windy_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784634978562,
+      "tag": "0008_wild_mystique",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784635963742,
+      "tag": "0009_common_nehzno",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1784636877938,
+      "tag": "0010_glossy_microbe",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1784638571164,
+      "tag": "0011_blushing_diamondback",
+      "breakpoints": true
     }
   ]
 }

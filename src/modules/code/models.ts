@@ -407,8 +407,8 @@ function nonNegativeNumberValue(value: unknown) {
   const parsed =
     typeof value === 'number'
       ? value
-      : Number.parseInt(typeof value === 'string' ? value : '0', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+      : Number.parseFloat(typeof value === 'string' ? value : '0');
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function positiveNumberValue(value: unknown, fallback: number) {

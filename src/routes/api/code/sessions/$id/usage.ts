@@ -70,6 +70,12 @@ async function POST({
           endpoint: body.endpoint,
           upstreamStatus: body.upstreamStatus ?? body.upstream_status,
           requestId: body.requestId ?? body.request_id,
+          costSource: body.costSource ?? body.cost_source,
+          providerRequestId: body.providerRequestId ?? body.provider_request_id,
+          providerQuota: body.providerQuota ?? body.provider_quota,
+          providerGroup: body.providerGroup ?? body.provider_group,
+          providerGroupRatio:
+            body.providerGroupRatio ?? body.provider_group_ratio,
           rawUsage: body.rawUsage ?? body.raw_usage,
           description: body.description,
           metadata: body.metadata,

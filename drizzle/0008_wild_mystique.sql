@@ -1,0 +1,1 @@
+ALTER TABLE `user` ADD `code_model_billing_remainder_units` integer DEFAULT 0 NOT NULL;

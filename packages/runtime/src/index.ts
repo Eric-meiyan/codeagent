@@ -3,8 +3,10 @@ import { Container } from '@cloudflare/containers';
 import {
   deliverOrQueueUsageReport,
   flushPendingUsageReports,
+  queueUsageReport,
   type UsageReportPayload,
 } from './billing-outbox';
+import { resolveProviderUsageReport } from './provider-usage';
 import { extractTokenUsage } from './token-usage';
 
 interface Env {
@@ -13,6 +15,8 @@ interface Env {
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_API_BASE_URL?: string;
   OPENAI_API_KEY?: string;
+  YUNWU_SYSTEM_ACCESS_TOKEN?: string;
+  YUNWU_USER_ID?: string;
   APP_BASE_URL?: string;
   BILLING_USAGE_WEBHOOK_SECRET?: string;
 }
@@ -56,6 +60,8 @@ interface UsageReportContext {
   endpoint: string;
   upstreamStatus: number;
   requestId: string;
+  model: string;
+  observedAtUnix: number;
 }
 
 interface ModelAuthorizationResult {
@@ -745,6 +751,7 @@ function copyUpstreamHeaders(headers: Headers): Headers {
     'anthropic-ratelimit-requests-remaining',
     'anthropic-ratelimit-tokens-limit',
     'anthropic-ratelimit-tokens-remaining',
+    'x-oneapi-request-id',
     'request-id',
     'retry-after',
   ]) {
@@ -999,6 +1006,8 @@ async function handleModelGateway(
         endpoint: gatewayPath,
         upstreamStatus: response.status,
         requestId: upstreamRequestId(response.headers),
+        model: modelFromRequestBody(requestBody),
+        observedAtUnix: Math.floor(Date.now() / 1000),
       })
     );
     return new Response(clientBody, responseInit);
@@ -1058,13 +1067,50 @@ async function reportUsageFromResponse(
       endpoint: report.endpoint,
       upstreamStatus: report.upstreamStatus,
       requestId: report.requestId,
+      model: report.model,
+      observedAtUnix: report.observedAtUnix,
     },
   };
-  await deliverOrQueueUsageReport(env, sessionId, payload);
+  let resolved: UsageReportPayload | null = null;
+  let resolutionError = 'Provider usage log is not available yet';
+  try {
+    resolved = await resolveProviderUsageReport(env, payload, {
+      attempts: 4,
+    });
+  } catch (error) {
+    resolutionError = error instanceof Error ? error.message : String(error);
+  }
+  if (!resolved) {
+    await queueUsageReport(env, sessionId, payload, {
+      lastError: resolutionError,
+    });
+    console.info('[billing-usage-queued]', {
+      sessionId,
+      requestId: payload.requestId,
+      endpoint: payload.endpoint,
+    });
+    return;
+  }
+  await deliverOrQueueUsageReport(env, sessionId, resolved);
+}
+
+function modelFromRequestBody(body: ArrayBuffer | undefined) {
+  if (!body?.byteLength) return '';
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
+      model?: unknown;
+    };
+    return typeof parsed.model === 'string'
+      ? parsed.model.trim().slice(0, 160)
+      : '';
+  } catch {
+    return '';
+  }
 }
 
 function upstreamRequestId(headers: Headers): string {
   return (
+    headers.get('x-oneapi-request-id') ||
     headers.get('request-id') ||
     headers.get('x-request-id') ||
     headers.get('anthropic-request-id') ||
@@ -1248,7 +1294,17 @@ export default {
     ctx: ExecutionContext
   ) {
     ctx.waitUntil(
-      flushPendingUsageReports(env)
+      flushPendingUsageReports(env, {
+        preparePayload: async (payload) => {
+          const resolved = await resolveProviderUsageReport(env, payload);
+          if (!resolved) {
+            throw new Error(
+              `Provider usage log is not available yet: ${payload.requestId || 'missing request id'}`
+            );
+          }
+          return resolved;
+        },
+      })
         .then((result) => {
           if (result.scanned > 0) {
             console.info('[billing-usage-outbox]', result);

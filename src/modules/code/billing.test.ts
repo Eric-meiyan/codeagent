@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 
 import {
   billingSettlementClaimStatus,
+  calculateAccumulatedModelTokenCharge,
   calculateMeteredDuration,
   calculateModelTokenCharge,
+  calculateModelTokenChargeUnits,
+  calculateProviderQuotaCharge,
+  calculateProviderQuotaChargeUnits,
   calculateRuntimeCharge,
 } from './billing';
 
@@ -39,11 +43,85 @@ assert.deepEqual(
     cachedInputTokens: 3718,
     inputTokenCostCreditsPer1m: 150,
     outputTokenCostCreditsPer1m: 750,
-    cacheCreationInputTokenCostCreditsPer1m: 188,
+    cacheCreationInputTokenCostCreditsPer1m: 187.5,
     cachedInputTokenCostCreditsPer1m: 15,
     billingMultiplier: 200,
   }),
   { rawCostCredits: 1, chargedCredits: 1 }
+);
+
+assert.equal(
+  calculateModelTokenChargeUnits({
+    inputTokens: 1,
+    outputTokens: 15,
+    cacheCreationInputTokens: 870,
+    cachedInputTokens: 3707,
+    inputTokenCostCreditsPer1m: 150,
+    outputTokenCostCreditsPer1m: 750,
+    cacheCreationInputTokenCostCreditsPer1m: 187.5,
+    cachedInputTokenCostCreditsPer1m: 15,
+    billingMultiplier: 200,
+  }),
+  46_026_000
+);
+
+assert.equal(
+  calculateModelTokenChargeUnits({
+    inputTokens: 6268,
+    outputTokens: 28,
+    cacheCreationInputTokens: 0,
+    cachedInputTokens: 0,
+    inputTokenCostCreditsPer1m: 62.5,
+    outputTokenCostCreditsPer1m: 500,
+    cacheCreationInputTokenCostCreditsPer1m: 0,
+    cachedInputTokenCostCreditsPer1m: 6.25,
+    billingMultiplier: 200,
+  }),
+  81_150_000
+);
+
+assert.deepEqual(
+  calculateProviderQuotaCharge({
+    providerQuota: 168_910,
+    providerQuotaPerCny: 1_000_000,
+    creditsPerCny: 100,
+    billingMultiplier: 200,
+  }),
+  { rawCostCredits: 17, chargedCredits: 34 }
+);
+
+assert.equal(
+  calculateProviderQuotaChargeUnits({
+    providerQuota: 168_910,
+    providerQuotaPerCny: 1_000_000,
+    creditsPerCny: 100,
+    billingMultiplier: 200,
+  }),
+  3_378_200_000
+);
+
+assert.deepEqual(
+  calculateAccumulatedModelTokenCharge({
+    remainderUnits: 0,
+    chargeUnits: 3_378_200_000,
+  }),
+  { chargedCredits: 33, remainderUnits: 78_200_000 }
+);
+
+const firstTinyClaudeCharge = calculateAccumulatedModelTokenCharge({
+  remainderUnits: 0,
+  chargeUnits: 46_026_000,
+});
+assert.deepEqual(firstTinyClaudeCharge, {
+  chargedCredits: 0,
+  remainderUnits: 46_026_000,
+});
+assert.deepEqual(
+  calculateAccumulatedModelTokenCharge({
+    remainderUnits: firstTinyClaudeCharge.remainderUnits,
+    chargeUnits: 350_269_500,
+  }),
+  { chargedCredits: 3, remainderUnits: 96_295_500 }
 );
 
 assert.deepEqual(

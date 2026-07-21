@@ -561,6 +561,7 @@ function renderFormFields(
         <Input
           type="number"
           min={0}
+          step="any"
           value={values.inputTokenCostCreditsPer1m}
           onChange={(event) =>
             onChange({
@@ -577,6 +578,7 @@ function renderFormFields(
         <Input
           type="number"
           min={0}
+          step="any"
           value={values.outputTokenCostCreditsPer1m}
           onChange={(event) =>
             onChange({
@@ -595,6 +597,7 @@ function renderFormFields(
         <Input
           type="number"
           min={0}
+          step="any"
           value={values.cacheCreationInputTokenCostCreditsPer1m}
           onChange={(event) =>
             onChange({
@@ -612,6 +615,7 @@ function renderFormFields(
         <Input
           type="number"
           min={0}
+          step="any"
           value={values.cachedInputTokenCostCreditsPer1m}
           onChange={(event) =>
             onChange({

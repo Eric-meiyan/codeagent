@@ -8,6 +8,7 @@
 
 import {
   boolean,
+  doublePrecision,
   index,
   integer,
   pgTable,
@@ -36,6 +37,13 @@ export const user = table(
     utmSource: text('utm_source').notNull().default(''),
     ip: text('ip').notNull().default(''),
     locale: text('locale').notNull().default(''),
+    codeModelBillingRemainderUnits: integer(
+      'code_model_billing_remainder_units'
+    )
+      .notNull()
+      .default(0),
+    codeBillingLockToken: text('code_billing_lock_token').notNull().default(''),
+    codeBillingLockExpiresAt: timestamp('code_billing_lock_expires_at'),
   },
   (table) => [
     index('idx_user_name').on(table.name),
@@ -605,18 +613,22 @@ export const codeModel = table(
     label: text('label').notNull(),
     baseUrl: text('base_url').notNull().default(''),
     description: text('description').notNull().default(''),
-    inputTokenCostCreditsPer1m: integer('input_token_cost_credits_per_1m')
+    inputTokenCostCreditsPer1m: doublePrecision(
+      'input_token_cost_credits_per_1m'
+    )
       .notNull()
       .default(0),
-    outputTokenCostCreditsPer1m: integer('output_token_cost_credits_per_1m')
+    outputTokenCostCreditsPer1m: doublePrecision(
+      'output_token_cost_credits_per_1m'
+    )
       .notNull()
       .default(0),
-    cacheCreationInputTokenCostCreditsPer1m: integer(
+    cacheCreationInputTokenCostCreditsPer1m: doublePrecision(
       'cache_creation_input_token_cost_credits_per_1m'
     )
       .notNull()
       .default(0),
-    cachedInputTokenCostCreditsPer1m: integer(
+    cachedInputTokenCostCreditsPer1m: doublePrecision(
       'cached_input_token_cost_credits_per_1m'
     )
       .notNull()
@@ -717,6 +729,16 @@ export const codeBillingEvent = table(
     endpoint: text('endpoint').notNull().default(''),
     upstreamStatus: integer('upstream_status').default(0).notNull(),
     requestId: text('request_id').notNull().default(''),
+    costSource: text('cost_source').notNull().default('token_rates'),
+    providerRequestId: text('provider_request_id').notNull().default(''),
+    providerQuota: integer('provider_quota').notNull().default(0),
+    providerQuotaPerCny: integer('provider_quota_per_cny')
+      .notNull()
+      .default(1000000),
+    providerGroup: text('provider_group').notNull().default(''),
+    providerGroupRatio: doublePrecision('provider_group_ratio')
+      .notNull()
+      .default(0),
     runtimeState: text('runtime_state').notNull().default(''),
     inputTokens: integer('input_tokens').default(0).notNull(),
     outputTokens: integer('output_tokens').default(0).notNull(),

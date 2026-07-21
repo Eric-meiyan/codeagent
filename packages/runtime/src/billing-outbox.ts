@@ -2,6 +2,7 @@ const OUTBOX_PREFIX = 'billing-usage-pending/';
 const INVALID_PREFIX = 'billing-usage-invalid/';
 const DEFAULT_BATCH_SIZE = 100;
 const MAX_RETRY_DELAY_MS = 6 * 60 * 60 * 1000;
+const MAX_UNRESOLVED_USAGE_RETRY_DELAY_MS = 5 * 60 * 1000;
 
 export interface UsageReportPayload {
   eventType: 'model_tokens';
@@ -10,6 +11,11 @@ export interface UsageReportPayload {
   endpoint: string;
   upstreamStatus: number;
   requestId: string;
+  costSource?: 'provider_log';
+  providerRequestId?: string;
+  providerQuota?: number;
+  providerGroup?: string;
+  providerGroupRatio?: number;
   inputTokens: number;
   outputTokens: number;
   cacheCreationInputTokens: number;
@@ -53,6 +59,7 @@ interface DeliveryOptions {
   fetchFn?: typeof fetch;
   now?: Date;
   sleepFn?: (delayMs: number) => Promise<void>;
+  preparePayload?: (payload: UsageReportPayload) => Promise<UsageReportPayload>;
 }
 
 export interface BillingOutboxFlushResult {
@@ -61,6 +68,7 @@ export interface BillingOutboxFlushResult {
   deferred: number;
   failed: number;
   invalid: number;
+  errors?: string[];
 }
 
 export async function deliverOrQueueUsageReport(
@@ -93,6 +101,31 @@ export async function deliverOrQueueUsageReport(
     updatedAt: now.toISOString(),
     nextAttemptAt: new Date(now.getTime() + retryDelayMs(2)).toISOString(),
     lastError,
+  };
+  await env.WORKSPACE_ARCHIVES.put(
+    usageReportKey(sessionId, payload.idempotencyKey),
+    JSON.stringify(pending),
+    { httpMetadata: { contentType: 'application/json' } }
+  );
+  return { delivered: false, queued: true };
+}
+
+export async function queueUsageReport(
+  env: BillingOutboxEnv,
+  sessionId: string,
+  payload: UsageReportPayload,
+  options: { now?: Date; lastError?: string } = {}
+) {
+  const now = options.now || new Date();
+  const pending: PendingUsageReport = {
+    version: 1,
+    sessionId,
+    payload,
+    attempts: 0,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    nextAttemptAt: new Date(now.getTime() + retryDelayMs(0)).toISOString(),
+    lastError: options.lastError || '',
   };
   await env.WORKSPACE_ARCHIVES.put(
     usageReportKey(sessionId, payload.idempotencyKey),
@@ -146,30 +179,44 @@ export async function flushPendingUsageReports(
       continue;
     }
 
-    if (Date.parse(pending.nextAttemptAt) > now.getTime()) {
+    if (effectiveNextAttemptAt(pending) > now.getTime()) {
       result.deferred += 1;
       continue;
     }
 
     try {
-      await postUsageReport(env, pending.sessionId, pending.payload, fetchFn);
+      const payload = options.preparePayload
+        ? await options.preparePayload(pending.payload)
+        : pending.payload;
+      await postUsageReport(env, pending.sessionId, payload, fetchFn);
       await env.WORKSPACE_ARCHIVES.delete(object.key);
       result.delivered += 1;
     } catch (error) {
+      const failure = errorMessage(error);
       const attempts = pending.attempts + 1;
       const updated: PendingUsageReport = {
         ...pending,
         attempts,
         updatedAt: now.toISOString(),
         nextAttemptAt: new Date(
-          now.getTime() + retryDelayMs(attempts)
+          now.getTime() +
+            retryDelayMsWithLimit(
+              attempts,
+              pending.payload.costSource === 'provider_log'
+                ? MAX_RETRY_DELAY_MS
+                : MAX_UNRESOLVED_USAGE_RETRY_DELAY_MS
+            )
         ).toISOString(),
-        lastError: errorMessage(error),
+        lastError: failure,
       };
       await env.WORKSPACE_ARCHIVES.put(object.key, JSON.stringify(updated), {
         httpMetadata: { contentType: 'application/json' },
       });
       result.failed += 1;
+      result.errors ||= [];
+      if (result.errors.length < 5 && !result.errors.includes(failure)) {
+        result.errors.push(failure);
+      }
     }
   }
 
@@ -213,7 +260,27 @@ function usageReportKey(sessionId: string, idempotencyKey: string) {
 }
 
 function retryDelayMs(attempts: number) {
-  return Math.min(MAX_RETRY_DELAY_MS, 30_000 * 2 ** Math.min(10, attempts));
+  return retryDelayMsWithLimit(attempts, MAX_RETRY_DELAY_MS);
+}
+
+function retryDelayMsWithLimit(attempts: number, limitMs: number) {
+  return Math.min(limitMs, 30_000 * 2 ** Math.min(10, attempts));
+}
+
+function effectiveNextAttemptAt(pending: PendingUsageReport) {
+  const storedNextAttemptAt = Date.parse(pending.nextAttemptAt);
+  if (pending.payload.costSource === 'provider_log') {
+    return storedNextAttemptAt;
+  }
+
+  const updatedAt = Date.parse(pending.updatedAt);
+  const cappedNextAttemptAt =
+    updatedAt +
+    retryDelayMsWithLimit(
+      pending.attempts,
+      MAX_UNRESOLVED_USAGE_RETRY_DELAY_MS
+    );
+  return Math.min(storedNextAttemptAt, cappedNextAttemptAt);
 }
 
 function validatePendingUsageReport(value: PendingUsageReport) {

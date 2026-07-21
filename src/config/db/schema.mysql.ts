@@ -8,6 +8,7 @@
 
 import {
   boolean,
+  double,
   index,
   int,
   longtext,
@@ -37,6 +38,13 @@ export const user = table(
     utmSource: varchar('utm_source', { length: 100 }).notNull().default(''),
     ip: varchar('ip', { length: 45 }).notNull().default(''),
     locale: varchar('locale', { length: 20 }).notNull().default(''),
+    codeModelBillingRemainderUnits: int('code_model_billing_remainder_units')
+      .notNull()
+      .default(0),
+    codeBillingLockToken: varchar191('code_billing_lock_token')
+      .notNull()
+      .default(''),
+    codeBillingLockExpiresAt: timestamp('code_billing_lock_expires_at'),
   },
   (table) => [
     index('idx_user_name').on(table.name),
@@ -573,18 +581,18 @@ export const codeModel = table(
     label: varchar('label', { length: 191 }).notNull(),
     baseUrl: varchar('base_url', { length: 255 }).notNull().default(''),
     description: text('description'),
-    inputTokenCostCreditsPer1m: int('input_token_cost_credits_per_1m')
+    inputTokenCostCreditsPer1m: double('input_token_cost_credits_per_1m')
       .notNull()
       .default(0),
-    outputTokenCostCreditsPer1m: int('output_token_cost_credits_per_1m')
+    outputTokenCostCreditsPer1m: double('output_token_cost_credits_per_1m')
       .notNull()
       .default(0),
-    cacheCreationInputTokenCostCreditsPer1m: int(
+    cacheCreationInputTokenCostCreditsPer1m: double(
       'cache_creation_input_token_cost_credits_per_1m'
     )
       .notNull()
       .default(0),
-    cachedInputTokenCostCreditsPer1m: int(
+    cachedInputTokenCostCreditsPer1m: double(
       'cached_input_token_cost_credits_per_1m'
     )
       .notNull()
@@ -681,6 +689,20 @@ export const codeBillingEvent = table(
     endpoint: varchar('endpoint', { length: 255 }).notNull().default(''),
     upstreamStatus: int('upstream_status').notNull().default(0),
     requestId: varchar('request_id', { length: 255 }).notNull().default(''),
+    costSource: varchar('cost_source', { length: 32 })
+      .notNull()
+      .default('token_rates'),
+    providerRequestId: varchar('provider_request_id', { length: 255 })
+      .notNull()
+      .default(''),
+    providerQuota: int('provider_quota').notNull().default(0),
+    providerQuotaPerCny: int('provider_quota_per_cny')
+      .notNull()
+      .default(1000000),
+    providerGroup: varchar('provider_group', { length: 255 })
+      .notNull()
+      .default(''),
+    providerGroupRatio: double('provider_group_ratio').notNull().default(0),
     runtimeState: varchar('runtime_state', { length: 32 })
       .notNull()
       .default(''),

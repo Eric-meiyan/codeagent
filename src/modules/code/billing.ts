@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 
 import { db } from '@/core/db';
 import {
   codeBillingEvent,
   codeModel,
   codeSession,
+  user,
   type CodeModel,
   type CodeSession,
   type NewCodeBillingEvent,
@@ -20,8 +21,13 @@ import { getUuid } from '@/lib/hash';
 import { normalizeAgent } from './runtime';
 
 const ONE_MILLION = 1_000_000;
+const DEFAULT_PROVIDER_QUOTA_PER_CNY = 500_000;
+const MODEL_CHARGE_UNITS_PER_CREDIT = ONE_MILLION * 100;
 const MODEL_INPUT_AUTHORIZATION_BUFFER_PERCENT = 125;
 const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
+const BILLING_LOCK_LEASE_MS = 60_000;
+const BILLING_LOCK_WAIT_MS = 10_000;
+const BILLING_LOCK_RETRY_MS = 75;
 
 export type CodeBillingEventType = 'model_tokens' | 'runtime_minutes';
 export type RuntimeBillingState = 'idle' | 'active' | 'high_load';
@@ -33,6 +39,7 @@ export interface CodeBillingSettings {
   runtimeMeterEnabled: boolean;
   unpaidAutoSettleEnabled: boolean;
   creditsPerCny: number;
+  providerQuotaPerCny: number;
   defaultMultiplier: number;
   freeMinutesPerSession: number;
   idleCreditsPerMinute: number;
@@ -85,6 +92,11 @@ export interface ModelTokenUsageInput {
   endpoint?: unknown;
   upstreamStatus?: unknown;
   requestId?: unknown;
+  costSource?: unknown;
+  providerRequestId?: unknown;
+  providerQuota?: unknown;
+  providerGroup?: unknown;
+  providerGroupRatio?: unknown;
   rawUsage?: unknown;
   description?: string;
   metadata?: unknown;
@@ -114,12 +126,7 @@ export function calculateModelTokenCharge(params: {
   cachedInputTokenCostCreditsPer1m: number;
   billingMultiplier: number;
 }) {
-  const inputCost =
-    params.inputTokens * params.inputTokenCostCreditsPer1m +
-    params.outputTokens * params.outputTokenCostCreditsPer1m +
-    params.cacheCreationInputTokens *
-      params.cacheCreationInputTokenCostCreditsPer1m +
-    params.cachedInputTokens * params.cachedInputTokenCostCreditsPer1m;
+  const inputCost = calculateModelTokenInputCost(params);
 
   const rawCostCredits =
     inputCost <= 0 ? 0 : Math.ceil(inputCost / ONE_MILLION);
@@ -129,6 +136,100 @@ export function calculateModelTokenCharge(params: {
       : Math.ceil((inputCost * params.billingMultiplier) / (ONE_MILLION * 100));
 
   return { rawCostCredits, chargedCredits };
+}
+
+export function calculateModelTokenChargeUnits(params: {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cachedInputTokens: number;
+  inputTokenCostCreditsPer1m: number;
+  outputTokenCostCreditsPer1m: number;
+  cacheCreationInputTokenCostCreditsPer1m: number;
+  cachedInputTokenCostCreditsPer1m: number;
+  billingMultiplier: number;
+}) {
+  return Math.max(
+    0,
+    Math.round(calculateModelTokenInputCost(params) * params.billingMultiplier)
+  );
+}
+
+export function calculateProviderQuotaCharge(params: {
+  providerQuota: number;
+  providerQuotaPerCny: number;
+  creditsPerCny: number;
+  billingMultiplier: number;
+}) {
+  const rawCostCredits = providerQuotaCostCredits(params);
+  return {
+    rawCostCredits: rawCostCredits <= 0 ? 0 : Math.ceil(rawCostCredits),
+    chargedCredits:
+      rawCostCredits <= 0
+        ? 0
+        : Math.ceil((rawCostCredits * params.billingMultiplier) / 100),
+  };
+}
+
+export function calculateProviderQuotaChargeUnits(params: {
+  providerQuota: number;
+  providerQuotaPerCny: number;
+  creditsPerCny: number;
+  billingMultiplier: number;
+}) {
+  const rawCostCredits = providerQuotaCostCredits(params);
+  return Math.max(
+    0,
+    Math.round(rawCostCredits * params.billingMultiplier * ONE_MILLION)
+  );
+}
+
+export function calculateAccumulatedModelTokenCharge(params: {
+  remainderUnits: number;
+  chargeUnits: number;
+}) {
+  const remainderUnits = Math.max(0, Math.floor(params.remainderUnits));
+  const chargeUnits = Math.max(0, Math.floor(params.chargeUnits));
+  const totalUnits = remainderUnits + chargeUnits;
+
+  return {
+    chargedCredits: Math.floor(totalUnits / MODEL_CHARGE_UNITS_PER_CREDIT),
+    remainderUnits: totalUnits % MODEL_CHARGE_UNITS_PER_CREDIT,
+  };
+}
+
+function calculateModelTokenInputCost(params: {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cachedInputTokens: number;
+  inputTokenCostCreditsPer1m: number;
+  outputTokenCostCreditsPer1m: number;
+  cacheCreationInputTokenCostCreditsPer1m: number;
+  cachedInputTokenCostCreditsPer1m: number;
+}) {
+  return (
+    params.inputTokens * params.inputTokenCostCreditsPer1m +
+    params.outputTokens * params.outputTokenCostCreditsPer1m +
+    params.cacheCreationInputTokens *
+      params.cacheCreationInputTokenCostCreditsPer1m +
+    params.cachedInputTokens * params.cachedInputTokenCostCreditsPer1m
+  );
+}
+
+function providerQuotaCostCredits(params: {
+  providerQuota: number;
+  providerQuotaPerCny: number;
+  creditsPerCny: number;
+}) {
+  const providerQuotaPerCny = positiveIntegerOrFallback(
+    params.providerQuotaPerCny,
+    ONE_MILLION
+  );
+  return (
+    (Math.max(0, params.providerQuota) / providerQuotaPerCny) *
+    Math.max(0, params.creditsPerCny)
+  );
 }
 
 export function calculateRuntimeCharge(params: {
@@ -197,7 +298,9 @@ export function calculateMeteredDuration(params: {
 }
 
 export async function getCodeBillingSettings(): Promise<CodeBillingSettings> {
-  const configs = await getAllConfigs();
+  // Billing gates must reflect emergency admin changes immediately. The
+  // general config cache can otherwise keep charging for up to an hour.
+  const configs = await getAllConfigs({ fresh: true });
   const runtimeMeterIntervalMinutes = positiveIntegerOrFallback(
     configs.billing_runtime_meter_interval_minutes,
     1
@@ -225,6 +328,10 @@ export async function getCodeBillingSettings(): Promise<CodeBillingSettings> {
       true
     ),
     creditsPerCny: numberConfig(configs.billing_credits_per_cny, 100),
+    providerQuotaPerCny: numberConfig(
+      configs.billing_provider_quota_per_cny,
+      DEFAULT_PROVIDER_QUOTA_PER_CNY
+    ),
     defaultMultiplier: numberConfig(configs.billing_default_multiplier, 200),
     freeMinutesPerSession: numberConfig(
       configs.billing_session_free_minutes,
@@ -286,8 +393,8 @@ export async function authorizeModelUsage(input: ModelUsageAuthorizationInput) {
   const model = await getCodeModelRow(row.agent, row.model);
   const costsConfigured = Boolean(
     model &&
-    positiveInteger(model.inputTokenCostCreditsPer1m, 0) > 0 &&
-    positiveInteger(model.outputTokenCostCreditsPer1m, 0) > 0
+    nonNegativeNumber(model.inputTokenCostCreditsPer1m) > 0 &&
+    nonNegativeNumber(model.outputTokenCostCreditsPer1m) > 0
   );
   const authorizationKey = optionalText(input.authorizationKey, 255);
 
@@ -328,21 +435,17 @@ export async function authorizeModelUsage(input: ModelUsageAuthorizationInput) {
     outputTokens: maxOutputTokens,
     cacheCreationInputTokens: 0,
     cachedInputTokens: 0,
-    inputTokenCostCreditsPer1m: positiveInteger(
-      model?.inputTokenCostCreditsPer1m,
-      0
+    inputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.inputTokenCostCreditsPer1m
     ),
-    outputTokenCostCreditsPer1m: positiveInteger(
-      model?.outputTokenCostCreditsPer1m,
-      0
+    outputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.outputTokenCostCreditsPer1m
     ),
-    cacheCreationInputTokenCostCreditsPer1m: positiveInteger(
-      model?.cacheCreationInputTokenCostCreditsPer1m,
-      0
+    cacheCreationInputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.cacheCreationInputTokenCostCreditsPer1m
     ),
-    cachedInputTokenCostCreditsPer1m: positiveInteger(
-      model?.cachedInputTokenCostCreditsPer1m,
-      0
+    cachedInputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.cachedInputTokenCostCreditsPer1m
     ),
     billingMultiplier: multiplier,
   });
@@ -398,6 +501,19 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
   const endpoint = optionalText(input.endpoint, 255);
   const upstreamStatus = nonNegativeInteger(input.upstreamStatus);
   const requestId = optionalText(input.requestId, 255);
+  const costSource = optionalText(input.costSource, 32);
+  const providerRequestId =
+    optionalText(input.providerRequestId, 255) || requestId;
+  const hasProviderQuota = isNonNegativeNumber(input.providerQuota);
+  const providerQuota = nonNegativeInteger(input.providerQuota);
+  const providerGroup = optionalText(input.providerGroup, 255);
+  const providerGroupRatio = nonNegativeNumber(input.providerGroupRatio);
+  const exactProviderCost = Boolean(
+    costSource === 'provider_log' && hasProviderQuota && providerRequestId
+  );
+  if (settings.enabled && settings.modelGateEnabled && !exactProviderCost) {
+    throw new Error('Exact provider usage cost is not available yet');
+  }
   const rawUsage = jsonText(input.rawUsage, 2048);
   const metadata = {
     ...metadataObject(input.metadata),
@@ -408,6 +524,12 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
     endpoint,
     upstreamStatus,
     requestId,
+    costSource: exactProviderCost ? 'provider_log' : 'token_rates',
+    providerRequestId,
+    providerQuota,
+    providerQuotaPerCny: settings.providerQuotaPerCny,
+    providerGroup,
+    providerGroupRatio,
     idempotencyKey,
     inputTokens,
     outputTokens,
@@ -415,67 +537,156 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
     cachedInputTokens,
   };
 
-  const { rawCostCredits, chargedCredits } = calculateModelTokenCharge({
+  const tokenCharge = calculateModelTokenCharge({
     inputTokens,
     outputTokens,
     cacheCreationInputTokens,
     cachedInputTokens,
-    inputTokenCostCreditsPer1m: positiveInteger(
-      model?.inputTokenCostCreditsPer1m,
-      0
+    inputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.inputTokenCostCreditsPer1m
     ),
-    outputTokenCostCreditsPer1m: positiveInteger(
-      model?.outputTokenCostCreditsPer1m,
-      0
+    outputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.outputTokenCostCreditsPer1m
     ),
-    cacheCreationInputTokenCostCreditsPer1m: positiveInteger(
-      model?.cacheCreationInputTokenCostCreditsPer1m,
-      0
+    cacheCreationInputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.cacheCreationInputTokenCostCreditsPer1m
     ),
-    cachedInputTokenCostCreditsPer1m: positiveInteger(
-      model?.cachedInputTokenCostCreditsPer1m,
-      0
+    cachedInputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.cachedInputTokenCostCreditsPer1m
     ),
     billingMultiplier: multiplier,
   });
-
-  return db().transaction(async (tx: any) => {
-    const result = await createBillingEvent(tx, {
-      userId: input.userId,
-      sessionId: row.id,
-      agent: normalizeAgent(row.agent),
-      model: row.model,
-      eventType: 'model_tokens',
-      idempotencyKey,
-      provider,
-      endpoint,
-      upstreamStatus,
-      requestId,
-      inputTokens,
-      outputTokens,
-      cacheCreationInputTokens,
-      cachedInputTokens,
-      rawUsage,
-      rawCostCredits,
-      chargedCredits:
-        settings.enabled && settings.modelGateEnabled ? chargedCredits : 0,
-      billingMultiplier: multiplier,
-      description:
-        input.description ||
-        `Model usage: ${row.model} (${inputTokens} input / ${outputTokens} output tokens)`,
-      metadata: jsonText(metadata, 4096),
-    });
-    if (result.created && result.event.status === 'charged') {
-      await tx
-        .update(codeSession)
-        .set({
-          billedCredits: sql`${codeSession.billedCredits} + ${result.event.chargedCredits}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(codeSession.id, row.id));
-    }
-    return result.event;
+  const tokenChargeUnits = calculateModelTokenChargeUnits({
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens,
+    cachedInputTokens,
+    inputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.inputTokenCostCreditsPer1m
+    ),
+    outputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.outputTokenCostCreditsPer1m
+    ),
+    cacheCreationInputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.cacheCreationInputTokenCostCreditsPer1m
+    ),
+    cachedInputTokenCostCreditsPer1m: nonNegativeNumber(
+      model?.cachedInputTokenCostCreditsPer1m
+    ),
+    billingMultiplier: multiplier,
   });
+  const providerCharge = calculateProviderQuotaCharge({
+    providerQuota,
+    providerQuotaPerCny: settings.providerQuotaPerCny,
+    creditsPerCny: settings.creditsPerCny,
+    billingMultiplier: multiplier,
+  });
+  const providerChargeUnits = calculateProviderQuotaChargeUnits({
+    providerQuota,
+    providerQuotaPerCny: settings.providerQuotaPerCny,
+    creditsPerCny: settings.creditsPerCny,
+    billingMultiplier: multiplier,
+  });
+  const rawCostCredits = exactProviderCost
+    ? providerCharge.rawCostCredits
+    : tokenCharge.rawCostCredits;
+  const chargedCredits = exactProviderCost
+    ? providerCharge.chargedCredits
+    : tokenCharge.chargedCredits;
+  const chargeUnits = exactProviderCost
+    ? providerChargeUnits
+    : tokenChargeUnits;
+
+  return withUserBillingLock(input.userId, () =>
+    db().transaction(async (tx: any) => {
+      if (idempotencyKey) {
+        const existing = await getBillingEventByIdempotencyKey(
+          tx,
+          input.userId,
+          idempotencyKey
+        );
+        if (existing) return existing;
+      }
+
+      let appliedChargedCredits = 0;
+      let remainderUnitsBefore = 0;
+      let remainderUnitsAfter = 0;
+      if (settings.enabled && settings.modelGateEnabled && chargeUnits > 0) {
+        const [billingUser] = await tx
+          .select({
+            remainderUnits: user.codeModelBillingRemainderUnits,
+          })
+          .from(user)
+          .where(eq(user.id, input.userId))
+          .limit(1);
+        if (!billingUser) throw new Error('Billing user not found');
+
+        remainderUnitsBefore = nonNegativeInteger(billingUser.remainderUnits);
+        const accumulated = calculateAccumulatedModelTokenCharge({
+          remainderUnits: remainderUnitsBefore,
+          chargeUnits,
+        });
+        appliedChargedCredits = accumulated.chargedCredits;
+        remainderUnitsAfter = accumulated.remainderUnits;
+
+        await tx
+          .update(user)
+          .set({
+            codeModelBillingRemainderUnits: remainderUnitsAfter,
+            updatedAt: new Date(),
+          })
+          .where(eq(user.id, input.userId));
+      }
+
+      const eventMetadata = {
+        ...metadata,
+        chargeUnits,
+        remainderUnitsBefore,
+        remainderUnitsAfter,
+        roundedRequestChargeCredits: chargedCredits,
+      };
+      const result = await createBillingEvent(tx, {
+        userId: input.userId,
+        sessionId: row.id,
+        agent: normalizeAgent(row.agent),
+        model: row.model,
+        eventType: 'model_tokens',
+        idempotencyKey,
+        provider,
+        endpoint,
+        upstreamStatus,
+        requestId,
+        costSource: exactProviderCost ? 'provider_log' : 'token_rates',
+        providerRequestId,
+        providerQuota,
+        providerQuotaPerCny: settings.providerQuotaPerCny,
+        providerGroup,
+        providerGroupRatio,
+        inputTokens,
+        outputTokens,
+        cacheCreationInputTokens,
+        cachedInputTokens,
+        rawUsage,
+        rawCostCredits,
+        chargedCredits: appliedChargedCredits,
+        billingMultiplier: multiplier,
+        description:
+          input.description ||
+          `Model usage: ${row.model} (${inputTokens} input / ${outputTokens} output tokens; ${exactProviderCost ? `provider quota ${providerQuota}` : 'token estimate'})`,
+        metadata: jsonText(eventMetadata, 4096),
+      });
+      if (result.created && result.event.status === 'charged') {
+        await tx
+          .update(codeSession)
+          .set({
+            billedCredits: sql`${codeSession.billedCredits} + ${result.event.chargedCredits}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(codeSession.id, row.id));
+      }
+      return result.event;
+    })
+  );
 }
 
 export async function settleSessionRuntimeUsage(input: RuntimeUsageInput) {
@@ -537,50 +748,52 @@ export async function settleSessionRuntimeUsage(input: RuntimeUsageInput) {
     };
   }
 
-  return db().transaction(async (tx: any) => {
-    const result = await createBillingEvent(tx, {
-      userId: input.userId,
-      sessionId: row.id,
-      agent: normalizeAgent(row.agent),
-      model: row.model,
-      eventType: 'runtime_minutes',
-      idempotencyKey,
-      runtimeState,
-      durationSeconds,
-      rawCostCredits: chargedCredits,
-      chargedCredits:
-        settings.enabled && settings.runtimeMeterEnabled ? chargedCredits : 0,
-      billingMultiplier: 100,
-      description:
-        input.description ||
-        `Runtime usage: ${chargedMinutes} minute${chargedMinutes === 1 ? '' : 's'} (${runtimeState})`,
-      metadata: JSON.stringify({
-        ...(input.metadata || {}),
+  return withUserBillingLock(input.userId, () =>
+    db().transaction(async (tx: any) => {
+      const result = await createBillingEvent(tx, {
+        userId: input.userId,
         sessionId: row.id,
         agent: normalizeAgent(row.agent),
         model: row.model,
+        eventType: 'runtime_minutes',
+        idempotencyKey,
         runtimeState,
         durationSeconds,
-        pendingDurationSeconds,
-        chargedMinutes,
-        freeMinutesPerSession: settings.freeMinutesPerSession,
-      }),
-    });
-    const event = result.event;
+        rawCostCredits: chargedCredits,
+        chargedCredits:
+          settings.enabled && settings.runtimeMeterEnabled ? chargedCredits : 0,
+        billingMultiplier: 100,
+        description:
+          input.description ||
+          `Runtime usage: ${chargedMinutes} minute${chargedMinutes === 1 ? '' : 's'} (${runtimeState})`,
+        metadata: JSON.stringify({
+          ...(input.metadata || {}),
+          sessionId: row.id,
+          agent: normalizeAgent(row.agent),
+          model: row.model,
+          runtimeState,
+          durationSeconds,
+          pendingDurationSeconds,
+          chargedMinutes,
+          freeMinutesPerSession: settings.freeMinutesPerSession,
+        }),
+      });
+      const event = result.event;
 
-    if (result.created) {
-      await tx
-        .update(codeSession)
-        .set({
-          lastBilledAt: billedThrough || endedAt,
-          billedCredits: sql`${codeSession.billedCredits} + ${event.status === 'charged' ? event.chargedCredits : 0}`,
-          updatedAt: endedAt,
-        })
-        .where(eq(codeSession.id, row.id));
-    }
+      if (result.created) {
+        await tx
+          .update(codeSession)
+          .set({
+            lastBilledAt: billedThrough || endedAt,
+            billedCredits: sql`${codeSession.billedCredits} + ${event.status === 'charged' ? event.chargedCredits : 0}`,
+            updatedAt: endedAt,
+          })
+          .where(eq(codeSession.id, row.id));
+      }
 
-    return event;
-  });
+      return event;
+    })
+  );
 }
 
 async function createBillingEvent(
@@ -832,7 +1045,64 @@ export async function settleUnpaidBillingEventsForUser(input: {
   };
 
   if (input.tx) return execute(input.tx);
-  return db().transaction(execute);
+  return withUserBillingLock(input.userId, () => db().transaction(execute));
+}
+
+async function withUserBillingLock<T>(
+  userId: string,
+  execute: () => Promise<T>
+): Promise<T> {
+  const token = getUuid();
+  const deadline = Date.now() + BILLING_LOCK_WAIT_MS;
+
+  while (Date.now() < deadline) {
+    const now = new Date();
+    await db()
+      .update(user)
+      .set({
+        codeBillingLockToken: token,
+        codeBillingLockExpiresAt: new Date(
+          now.getTime() + BILLING_LOCK_LEASE_MS
+        ),
+      })
+      .where(
+        and(
+          eq(user.id, userId),
+          or(
+            eq(user.codeBillingLockToken, ''),
+            isNull(user.codeBillingLockExpiresAt),
+            lt(user.codeBillingLockExpiresAt, now)
+          )
+        )
+      );
+
+    const [lock] = await db()
+      .select({ token: user.codeBillingLockToken })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+    if (!lock) throw new Error('Billing user not found');
+
+    if (lock.token === token) {
+      try {
+        return await execute();
+      } finally {
+        await db()
+          .update(user)
+          .set({
+            codeBillingLockToken: '',
+            codeBillingLockExpiresAt: null,
+          })
+          .where(
+            and(eq(user.id, userId), eq(user.codeBillingLockToken, token))
+          );
+      }
+    }
+
+    await sleep(BILLING_LOCK_RETRY_MS);
+  }
+
+  throw new Error('Billing settlement is busy; retry shortly');
 }
 
 export async function settleCollectibleBillingDebts(limit = 25) {
@@ -971,6 +1241,20 @@ function nonNegativeInteger(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
 }
 
+function nonNegativeNumber(value: unknown) {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : Number.parseFloat(typeof value === 'string' ? value : '0');
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function isNonNegativeNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return false;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) && parsed >= 0;
+}
+
 function optionalText(value: unknown, maxLength: number) {
   if (value === null || value === undefined) return '';
   return String(value).trim().slice(0, maxLength);
@@ -1023,4 +1307,8 @@ function positiveIntegerOrFallback(value: unknown, fallback: number) {
       ? value
       : Number.parseInt(typeof value === 'string' ? value : '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function sleep(delayMs: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 }

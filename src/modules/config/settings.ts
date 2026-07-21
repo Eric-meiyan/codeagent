@@ -348,6 +348,16 @@ export function getSettings(): Setting[] {
       defaultValue: '100',
     },
     {
+      name: 'billing_provider_quota_per_cny',
+      title: 'Provider quota units per CNY',
+      type: 'number',
+      placeholder: '500000',
+      tip: 'Yunwu bills 500,000 quota units as CNY 1.',
+      group: 'usage_billing',
+      tab: 'general',
+      defaultValue: '500000',
+    },
+    {
       name: 'billing_default_multiplier',
       title: 'Default cost multiplier (%)',
       type: 'number',

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   deliverOrQueueUsageReport,
   flushPendingUsageReports,
+  queueUsageReport,
   type BillingOutboxBucket,
   type UsageReportPayload,
 } from './billing-outbox';
@@ -68,6 +69,71 @@ function jsonResponse(code: number, status = 200) {
     status,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+{
+  const bucket = new MemoryBucket();
+  await queueUsageReport(env(bucket), 's-1', payload, {
+    now: new Date('2026-07-21T00:00:00.000Z'),
+    lastError: 'provider usage pending',
+  });
+
+  let prepared = false;
+  const result = await flushPendingUsageReports(env(bucket), {
+    fetchFn: async () => jsonResponse(0),
+    preparePayload: async (value) => {
+      prepared = true;
+      return {
+        ...value,
+        costSource: 'provider_log',
+        providerRequestId: value.requestId,
+        providerQuota: 168_910,
+      };
+    },
+    now: new Date('2026-07-21T00:00:31.000Z'),
+  });
+
+  assert.equal(prepared, true);
+  assert.deepEqual(result, {
+    scanned: 1,
+    delivered: 1,
+    deferred: 0,
+    failed: 0,
+    invalid: 0,
+  });
+  assert.equal(bucket.objects.size, 0);
+}
+
+{
+  const bucket = new MemoryBucket();
+  await bucket.put(
+    'billing-usage-pending/s-1/legacy-backoff.json',
+    JSON.stringify({
+      version: 1,
+      sessionId: 's-1',
+      payload,
+      attempts: 10,
+      createdAt: '2026-07-21T00:00:00.000Z',
+      updatedAt: '2026-07-21T00:00:00.000Z',
+      nextAttemptAt: '2026-07-21T06:00:00.000Z',
+      lastError: 'provider usage pending',
+    })
+  );
+
+  const result = await flushPendingUsageReports(env(bucket), {
+    fetchFn: async () => jsonResponse(0),
+    preparePayload: async (value) => ({
+      ...value,
+      costSource: 'provider_log',
+      providerRequestId: 'provider-request-1',
+      providerQuota: 10,
+    }),
+    now: new Date('2026-07-21T00:05:01.000Z'),
+  });
+
+  assert.equal(result.delivered, 1);
+  assert.equal(result.deferred, 0);
+  assert.equal(bucket.objects.size, 0);
 }
 
 {
@@ -146,6 +212,7 @@ function jsonResponse(code: number, status = 200) {
     now: new Date('2026-07-21T00:02:01.000Z'),
   });
   assert.equal(failed.failed, 1);
+  assert.deepEqual(failed.errors, ['still unavailable']);
   assert.equal(bucket.objects.size, 1);
   const stored = JSON.parse([...bucket.objects.values()][0]) as {
     attempts: number;
