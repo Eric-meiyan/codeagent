@@ -100,6 +100,8 @@ function jsonResponse(code: number, status = 200) {
     deferred: 0,
     failed: 0,
     invalid: 0,
+    alerted: 0,
+    deadLettered: 0,
   });
   assert.equal(bucket.objects.size, 0);
 }
@@ -179,6 +181,8 @@ function jsonResponse(code: number, status = 200) {
     deferred: 1,
     failed: 0,
     invalid: 0,
+    alerted: 0,
+    deadLettered: 0,
   });
 
   const flushed = await flushPendingUsageReports(env(bucket), {
@@ -191,6 +195,8 @@ function jsonResponse(code: number, status = 200) {
     deferred: 0,
     failed: 0,
     invalid: 0,
+    alerted: 0,
+    deadLettered: 0,
   });
   assert.equal(bucket.objects.size, 0);
 }
@@ -242,6 +248,93 @@ function jsonResponse(code: number, status = 200) {
       key.startsWith('billing-usage-pending/')
     ),
     false
+  );
+}
+
+{
+  const bucket = new MemoryBucket();
+  await queueUsageReport(env(bucket), 's-1', payload, {
+    now: new Date('2026-07-21T00:00:00.000Z'),
+    lastError: 'provider usage pending',
+  });
+
+  const alerts: Array<Record<string, unknown>> = [];
+  const stale = await flushPendingUsageReports(env(bucket), {
+    fetchFn: async (_input, init) => {
+      alerts.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return jsonResponse(0);
+    },
+    preparePayload: async () => {
+      throw new Error('provider usage still unavailable');
+    },
+    now: new Date('2026-07-22T00:00:31.000Z'),
+  });
+
+  assert.equal(stale.alerted, 1);
+  assert.equal(stale.failed, 1);
+  assert.equal(stale.deadLettered, 0);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].eventType, 'model_usage_unresolved');
+  assert.equal(alerts[0].idempotencyKey, payload.idempotencyKey);
+  assert.equal(alerts[0].firstQueuedAt, '2026-07-21T00:00:00.000Z');
+
+  const storedAfterAlert = JSON.parse([...bucket.objects.values()][0]) as {
+    alertedAt?: string;
+  };
+  assert.equal(storedAfterAlert.alertedAt, '2026-07-22T00:00:31.000Z');
+
+  const deadLettered = await flushPendingUsageReports(env(bucket), {
+    fetchFn: async () => {
+      throw new Error('alert should not repeat');
+    },
+    preparePayload: async () => {
+      throw new Error('provider usage still unavailable');
+    },
+    now: new Date('2026-07-28T00:05:32.000Z'),
+  });
+
+  assert.equal(deadLettered.alerted, 0);
+  assert.equal(deadLettered.deadLettered, 1);
+  assert.equal(deadLettered.failed, 1);
+  assert.equal(
+    [...bucket.objects.keys()].some((key) =>
+      key.startsWith('billing-usage-unresolved/')
+    ),
+    true
+  );
+  assert.equal(
+    [...bucket.objects.keys()].some((key) =>
+      key.startsWith('billing-usage-pending/')
+    ),
+    false
+  );
+}
+
+{
+  const bucket = new MemoryBucket();
+  await queueUsageReport(env(bucket), 's-1', payload, {
+    now: new Date('2026-07-21T00:00:00.000Z'),
+    lastError: 'provider usage pending',
+  });
+
+  const result = await flushPendingUsageReports(env(bucket), {
+    fetchFn: async () => {
+      throw new Error('reconciliation alert unavailable');
+    },
+    preparePayload: async () => {
+      throw new Error('provider usage still unavailable');
+    },
+    now: new Date('2026-07-29T00:00:31.000Z'),
+  });
+
+  assert.equal(result.alerted, 0);
+  assert.equal(result.deadLettered, 0);
+  assert.equal(result.failed, 1);
+  assert.equal(
+    [...bucket.objects.keys()].some((key) =>
+      key.startsWith('billing-usage-pending/')
+    ),
+    true
   );
 }
 

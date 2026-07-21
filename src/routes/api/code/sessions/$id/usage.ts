@@ -6,6 +6,7 @@ import {
   CodeBillingAuthorizationError,
   getCodeSessionById,
   recordModelTokenUsage,
+  recordModelUsageReconciliationIssue,
   settleSessionRuntimeUsage,
 } from '@/modules/code/billing';
 import { getAllConfigs } from '@/modules/config/service';
@@ -78,6 +79,29 @@ async function POST({
             body.providerGroupRatio ?? body.provider_group_ratio,
           rawUsage: body.rawUsage ?? body.raw_usage,
           description: body.description,
+          metadata: body.metadata,
+        })
+      );
+    }
+
+    if (eventType === 'model_usage_unresolved') {
+      return respData(
+        await recordModelUsageReconciliationIssue({
+          userId,
+          sessionId: params.id,
+          idempotencyKey: body.idempotencyKey ?? body.idempotency_key,
+          provider: body.provider,
+          endpoint: body.endpoint,
+          upstreamStatus: body.upstreamStatus ?? body.upstream_status,
+          requestId: body.requestId ?? body.request_id,
+          inputTokens: body.inputTokens ?? body.input_tokens,
+          outputTokens: body.outputTokens ?? body.output_tokens,
+          cacheCreationInputTokens:
+            body.cacheCreationInputTokens ?? body.cache_creation_input_tokens,
+          cachedInputTokens: body.cachedInputTokens ?? body.cached_input_tokens,
+          attempts: body.attempts,
+          firstQueuedAt: body.firstQueuedAt ?? body.first_queued_at,
+          lastError: body.lastError ?? body.last_error,
           metadata: body.metadata,
         })
       );

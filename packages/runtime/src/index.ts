@@ -992,20 +992,22 @@ async function handleModelGateway(
     headers: copyUpstreamHeaders(response.headers),
   };
 
+  const requestId = upstreamRequestId(response.headers);
   if (
     sessionId &&
-    response.ok &&
-    response.body &&
-    shouldReportUsage(gatewayPath)
+    shouldReportUsage(gatewayPath) &&
+    (response.ok || Boolean(requestId))
   ) {
-    const [clientBody, billingBody] = response.body.tee();
+    const [clientBody, billingBody] = response.body
+      ? response.body.tee()
+      : [null, null];
     ctx.waitUntil(
       reportUsageFromResponse(billingBody, env, sessionId, {
         idempotencyKey: usageIdempotencyKey,
         provider: upstream.hostname,
         endpoint: gatewayPath,
         upstreamStatus: response.status,
-        requestId: upstreamRequestId(response.headers),
+        requestId,
         model: modelFromRequestBody(requestBody),
         observedAtUnix: Math.floor(Date.now() / 1000),
       })
@@ -1025,21 +1027,13 @@ function shouldReportUsage(gatewayPath: string): boolean {
 }
 
 async function reportUsageFromResponse(
-  body: ReadableStream,
+  body: ReadableStream | null,
   env: Env,
   sessionId: string,
   report: UsageReportContext
 ) {
   const text = await new Response(body).text().catch(() => '');
   const usage = extractTokenUsage(text);
-  if (
-    !usage.inputTokens &&
-    !usage.outputTokens &&
-    !usage.cacheCreationInputTokens &&
-    !usage.cachedInputTokens
-  ) {
-    return;
-  }
 
   const payload: UsageReportPayload = {
     eventType: 'model_tokens',

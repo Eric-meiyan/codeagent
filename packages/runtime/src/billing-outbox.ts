@@ -1,8 +1,11 @@
 const OUTBOX_PREFIX = 'billing-usage-pending/';
 const INVALID_PREFIX = 'billing-usage-invalid/';
+const UNRESOLVED_PREFIX = 'billing-usage-unresolved/';
 const DEFAULT_BATCH_SIZE = 100;
 const MAX_RETRY_DELAY_MS = 6 * 60 * 60 * 1000;
 const MAX_UNRESOLVED_USAGE_RETRY_DELAY_MS = 5 * 60 * 1000;
+const UNRESOLVED_ALERT_AFTER_MS = 24 * 60 * 60 * 1000;
+const UNRESOLVED_DEAD_LETTER_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface UsageReportPayload {
   eventType: 'model_tokens';
@@ -53,6 +56,7 @@ interface PendingUsageReport {
   updatedAt: string;
   nextAttemptAt: string;
   lastError: string;
+  alertedAt?: string;
 }
 
 interface DeliveryOptions {
@@ -68,6 +72,8 @@ export interface BillingOutboxFlushResult {
   deferred: number;
   failed: number;
   invalid: number;
+  alerted: number;
+  deadLettered: number;
   errors?: string[];
 }
 
@@ -147,6 +153,8 @@ export async function flushPendingUsageReports(
     deferred: 0,
     failed: 0,
     invalid: 0,
+    alerted: 0,
+    deadLettered: 0,
   };
   const batchSize = Math.min(
     100,
@@ -194,7 +202,7 @@ export async function flushPendingUsageReports(
     } catch (error) {
       const failure = errorMessage(error);
       const attempts = pending.attempts + 1;
-      const updated: PendingUsageReport = {
+      let updated: PendingUsageReport = {
         ...pending,
         attempts,
         updatedAt: now.toISOString(),
@@ -209,24 +217,103 @@ export async function flushPendingUsageReports(
         ).toISOString(),
         lastError: failure,
       };
+
+      if (pending.payload.costSource !== 'provider_log') {
+        const unresolvedAgeMs = pendingAgeMs(pending, now);
+        if (
+          unresolvedAgeMs >= UNRESOLVED_ALERT_AFTER_MS &&
+          !pending.alertedAt
+        ) {
+          try {
+            await postReconciliationIssue(
+              env,
+              pending.sessionId,
+              pending.payload,
+              {
+                attempts,
+                firstQueuedAt: pending.createdAt,
+                lastError: failure,
+              },
+              fetchFn
+            );
+            updated = { ...updated, alertedAt: now.toISOString() };
+            result.alerted += 1;
+          } catch (alertError) {
+            appendError(result, errorMessage(alertError));
+          }
+        }
+
+        if (
+          unresolvedAgeMs >= UNRESOLVED_DEAD_LETTER_AFTER_MS &&
+          updated.alertedAt
+        ) {
+          await env.WORKSPACE_ARCHIVES.put(
+            unresolvedUsageKey(object.key),
+            JSON.stringify(updated),
+            { httpMetadata: { contentType: 'application/json' } }
+          );
+          await env.WORKSPACE_ARCHIVES.delete(object.key);
+          result.deadLettered += 1;
+          result.failed += 1;
+          appendError(result, failure);
+          continue;
+        }
+      }
+
       await env.WORKSPACE_ARCHIVES.put(object.key, JSON.stringify(updated), {
         httpMetadata: { contentType: 'application/json' },
       });
       result.failed += 1;
-      result.errors ||= [];
-      if (result.errors.length < 5 && !result.errors.includes(failure)) {
-        result.errors.push(failure);
-      }
+      appendError(result, failure);
     }
   }
 
   return result;
 }
 
+async function postReconciliationIssue(
+  env: BillingOutboxEnv,
+  sessionId: string,
+  payload: UsageReportPayload,
+  issue: { attempts: number; firstQueuedAt: string; lastError: string },
+  fetchFn: typeof fetch
+) {
+  await postBillingPayload(
+    env,
+    sessionId,
+    {
+      eventType: 'model_usage_unresolved',
+      idempotencyKey: payload.idempotencyKey,
+      provider: payload.provider,
+      endpoint: payload.endpoint,
+      upstreamStatus: payload.upstreamStatus,
+      requestId: payload.requestId,
+      inputTokens: payload.inputTokens,
+      outputTokens: payload.outputTokens,
+      cacheCreationInputTokens: payload.cacheCreationInputTokens,
+      cachedInputTokens: payload.cachedInputTokens,
+      attempts: issue.attempts,
+      firstQueuedAt: issue.firstQueuedAt,
+      lastError: issue.lastError,
+      metadata: payload.metadata,
+    },
+    fetchFn
+  );
+}
+
 async function postUsageReport(
   env: BillingOutboxEnv,
   sessionId: string,
   payload: UsageReportPayload,
+  fetchFn: typeof fetch
+) {
+  await postBillingPayload(env, sessionId, payload, fetchFn);
+}
+
+async function postBillingPayload(
+  env: BillingOutboxEnv,
+  sessionId: string,
+  payload: unknown,
   fetchFn: typeof fetch
 ) {
   if (!env.APP_BASE_URL || !env.BILLING_USAGE_WEBHOOK_SECRET) {
@@ -257,6 +344,17 @@ async function postUsageReport(
 
 function usageReportKey(sessionId: string, idempotencyKey: string) {
   return `${OUTBOX_PREFIX}${encodeURIComponent(sessionId)}/${encodeURIComponent(idempotencyKey)}.json`;
+}
+
+function unresolvedUsageKey(pendingKey: string) {
+  return `${UNRESOLVED_PREFIX}${encodeURIComponent(pendingKey)}.json`;
+}
+
+function pendingAgeMs(pending: PendingUsageReport, now: Date) {
+  const createdAt = Date.parse(pending.createdAt);
+  return Number.isFinite(createdAt)
+    ? Math.max(0, now.getTime() - createdAt)
+    : 0;
 }
 
 function retryDelayMs(attempts: number) {
@@ -296,6 +394,13 @@ function validatePendingUsageReport(value: PendingUsageReport) {
 
 function errorMessage(error: unknown) {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
+}
+
+function appendError(result: BillingOutboxFlushResult, error: string) {
+  result.errors ||= [];
+  if (result.errors.length < 5 && !result.errors.includes(error)) {
+    result.errors.push(error);
+  }
 }
 
 function sleep(delayMs: number) {

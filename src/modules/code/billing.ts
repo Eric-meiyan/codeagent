@@ -102,6 +102,24 @@ export interface ModelTokenUsageInput {
   metadata?: unknown;
 }
 
+export interface ModelUsageReconciliationIssueInput {
+  userId: string;
+  sessionId: string;
+  idempotencyKey?: unknown;
+  provider?: unknown;
+  endpoint?: unknown;
+  upstreamStatus?: unknown;
+  requestId?: unknown;
+  inputTokens?: unknown;
+  outputTokens?: unknown;
+  cacheCreationInputTokens?: unknown;
+  cachedInputTokens?: unknown;
+  attempts?: unknown;
+  firstQueuedAt?: unknown;
+  lastError?: unknown;
+  metadata?: unknown;
+}
+
 export interface RuntimeUsageInput {
   userId: string;
   sessionId: string;
@@ -408,6 +426,21 @@ export async function authorizeModelUsage(input: ModelUsageAuthorizationInput) {
     };
   }
 
+  const outstandingCredits = await settleAndGetCollectibleUnpaidCredits(
+    input.userId
+  );
+  if (outstandingCredits > 0) {
+    throw new CodeBillingAuthorizationError(
+      'insufficient_credits',
+      'Outstanding usage must be paid before another model request',
+      {
+        outstandingCredits,
+        sessionId: row.id,
+        model: row.model,
+      }
+    );
+  }
+
   if (
     (settings.requireConfiguredModelCosts || settings.modelGateEnabled) &&
     !costsConfigured
@@ -605,7 +638,14 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
           input.userId,
           idempotencyKey
         );
-        if (existing) return existing;
+        if (existing) {
+          await markReconciliationIssueResolved(
+            tx,
+            input.userId,
+            idempotencyKey
+          );
+          return existing;
+        }
       }
 
       let appliedChargedCredits = 0;
@@ -684,9 +724,84 @@ export async function recordModelTokenUsage(input: ModelTokenUsageInput) {
           })
           .where(eq(codeSession.id, row.id));
       }
+      if (idempotencyKey) {
+        await markReconciliationIssueResolved(tx, input.userId, idempotencyKey);
+      }
       return result.event;
     })
   );
+}
+
+export async function recordModelUsageReconciliationIssue(
+  input: ModelUsageReconciliationIssueInput
+) {
+  const row = await getOwnedActiveOrEndedSession(input.userId, input.sessionId);
+  const originalIdempotencyKey = optionalText(input.idempotencyKey, 230);
+  if (!originalIdempotencyKey) {
+    throw new Error('Missing reconciliation idempotency key');
+  }
+
+  const provider = optionalText(input.provider, 255);
+  const endpoint = optionalText(input.endpoint, 255);
+  const upstreamStatus = nonNegativeInteger(input.upstreamStatus);
+  const requestId = optionalText(input.requestId, 255);
+  const inputTokens = nonNegativeInteger(input.inputTokens);
+  const outputTokens = nonNegativeInteger(input.outputTokens);
+  const cacheCreationInputTokens = nonNegativeInteger(
+    input.cacheCreationInputTokens
+  );
+  const cachedInputTokens = nonNegativeInteger(input.cachedInputTokens);
+  const attempts = nonNegativeInteger(input.attempts);
+  const firstQueuedAt = optionalText(input.firstQueuedAt, 64);
+  const lastError = optionalText(input.lastError, 500);
+  const metadata = {
+    ...metadataObject(input.metadata),
+    reconciliation: 'provider_usage_unresolved',
+    originalIdempotencyKey,
+    sessionId: row.id,
+    agent: normalizeAgent(row.agent),
+    model: row.model,
+    provider,
+    endpoint,
+    upstreamStatus,
+    requestId,
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens,
+    cachedInputTokens,
+    attempts,
+    firstQueuedAt,
+    lastError,
+  };
+
+  return db().transaction(async (tx: any) => {
+    const result = await createBillingEvent(tx, {
+      userId: input.userId,
+      sessionId: row.id,
+      agent: normalizeAgent(row.agent),
+      model: row.model,
+      eventType: 'model_tokens',
+      idempotencyKey: reconciliationIssueIdempotencyKey(originalIdempotencyKey),
+      provider,
+      endpoint,
+      upstreamStatus,
+      requestId,
+      costSource: 'provider_unresolved',
+      inputTokens,
+      outputTokens,
+      cacheCreationInputTokens,
+      cachedInputTokens,
+      rawCostCredits: 0,
+      chargedCredits: 0,
+      billingMultiplier: 0,
+      status: 'unresolved',
+      collectible: 0,
+      settlementError: lastError,
+      description: `Provider usage reconciliation pending for ${row.model}`,
+      metadata: jsonText(metadata, 4096),
+    });
+    return result.event;
+  });
 }
 
 export async function settleSessionRuntimeUsage(input: RuntimeUsageInput) {
@@ -822,7 +937,7 @@ async function createBillingEvent(
       status: values.status || (chargedCredits > 0 ? 'pending' : 'recorded'),
       collectible,
       settlementAttempts: 0,
-      settlementError: '',
+      settlementError: values.settlementError || '',
       metadata,
       createdAt: new Date(),
     };
@@ -898,7 +1013,7 @@ async function createBillingEvent(
     settlementAttempts,
     lastSettlementAt,
     settledAt,
-    settlementError,
+    settlementError: values.settlementError || settlementError,
     metadata,
     createdAt: new Date(),
   };
@@ -1048,6 +1163,35 @@ export async function settleUnpaidBillingEventsForUser(input: {
   return withUserBillingLock(input.userId, () => db().transaction(execute));
 }
 
+async function settleAndGetCollectibleUnpaidCredits(userId: string) {
+  let outstandingCredits = await getCollectibleUnpaidCredits(userId);
+  if (outstandingCredits <= 0) return 0;
+
+  await settleUnpaidBillingEventsForUser({
+    userId,
+    limit: 100,
+    enabled: true,
+  });
+  outstandingCredits = await getCollectibleUnpaidCredits(userId);
+  return outstandingCredits;
+}
+
+async function getCollectibleUnpaidCredits(userId: string) {
+  const [row] = await db()
+    .select({
+      credits: sql<number>`coalesce(sum(${codeBillingEvent.chargedCredits}), 0)`,
+    })
+    .from(codeBillingEvent)
+    .where(
+      and(
+        eq(codeBillingEvent.userId, userId),
+        eq(codeBillingEvent.status, 'unpaid'),
+        eq(codeBillingEvent.collectible, 1)
+      )
+    );
+  return nonNegativeInteger(row?.credits);
+}
+
 async function withUserBillingLock<T>(
   userId: string,
   execute: () => Promise<T>
@@ -1166,6 +1310,34 @@ async function getBillingEventByIdempotencyKey(
     )
     .limit(1);
   return row;
+}
+
+async function markReconciliationIssueResolved(
+  tx: any,
+  userId: string,
+  originalIdempotencyKey: string
+) {
+  await tx
+    .update(codeBillingEvent)
+    .set({
+      status: 'resolved',
+      settlementError: '',
+      settledAt: new Date(),
+    })
+    .where(
+      and(
+        eq(codeBillingEvent.userId, userId),
+        eq(
+          codeBillingEvent.idempotencyKey,
+          reconciliationIssueIdempotencyKey(originalIdempotencyKey)
+        ),
+        eq(codeBillingEvent.status, 'unresolved')
+      )
+    );
+}
+
+function reconciliationIssueIdempotencyKey(originalIdempotencyKey: string) {
+  return `unresolved:${originalIdempotencyKey}`.slice(0, 255);
 }
 
 async function getOwnedActiveOrEndedSession(userId: string, sessionId: string) {

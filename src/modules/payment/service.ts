@@ -482,6 +482,24 @@ async function handleCheckoutSuccess(session: any, provider: string) {
         .set(orderUpdate)
         .where(eq(order.id, existingOrder.id));
     });
+
+    if (existingOrder.creditsAmount && existingOrder.creditsAmount > 0) {
+      try {
+        const { settleUnpaidBillingEventsForUser } =
+          await import('@/modules/code/billing');
+        await settleUnpaidBillingEventsForUser({
+          userId: existingOrder.userId,
+          limit: 100,
+          enabled: true,
+        });
+      } catch (error) {
+        console.warn('[payment-credit-debt-settlement] failed', {
+          userId: existingOrder.userId,
+          orderNo: existingOrder.orderNo,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   } else if (
     session.paymentStatus === PaymentStatus.FAILED ||
     session.paymentStatus === PaymentStatus.CANCELED
