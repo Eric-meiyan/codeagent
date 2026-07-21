@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { handleWebhook } from '@/modules/payment/service';
-import { respErr, respOk } from '@/lib/resp';
+import { respOk } from '@/lib/resp';
 
 export const Route = createFileRoute('/api/payment/notify/$provider')({
   server: {
@@ -40,7 +40,17 @@ export const Route = createFileRoute('/api/payment/notify/$provider')({
             });
           }
 
-          return respErr(error.message || 'Webhook handling failed');
+          const message = error?.message || 'Webhook handling failed';
+          const isInvalidRequest =
+            error?.type === 'StripeSignatureVerificationError' ||
+            /invalid webhook|invalid .*signature|missing .*signature|timestamp outside/i.test(
+              message
+            );
+
+          return Response.json(
+            { code: -1, message: 'Webhook handling failed' },
+            { status: isInvalidRequest ? 400 : 500 }
+          );
         }
       },
     },

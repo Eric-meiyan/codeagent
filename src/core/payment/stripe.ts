@@ -244,7 +244,7 @@ export class StripeProvider implements PaymentProvider {
         throw new Error('Signing Secret not configured');
       }
 
-      const event = this.client.webhooks.constructEvent(
+      const event = await this.client.webhooks.constructEventAsync(
         rawBody,
         signature,
         this.configs.signingSecret
