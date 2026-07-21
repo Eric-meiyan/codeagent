@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
 import { getAdminConfigs, saveConfigs } from '@/modules/config/service';
+import { parseTopupProducts } from '@/modules/payment/topup-catalog';
 import { hasPermission } from '@/modules/rbac/service';
 import { respData, respErr, respOk } from '@/lib/resp';
 
@@ -36,6 +37,11 @@ async function POST({ request }: { request: Request }) {
 
     const body = await request.json();
     if (!body || typeof body !== 'object') return respErr('Invalid body');
+
+    if (typeof body.credit_topup_products === 'string') {
+      const catalog = parseTopupProducts(body.credit_topup_products);
+      if (catalog.error) return respErr(catalog.error);
+    }
 
     await saveConfigs(body);
     return respOk();

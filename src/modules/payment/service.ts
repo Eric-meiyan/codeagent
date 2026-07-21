@@ -1,10 +1,11 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, or } from 'drizzle-orm';
 
 import { db } from '@/core/db';
 import {
   AlipayProvider,
   CreemProvider,
   PaymentManager,
+  PayPalProvider,
   StripeProvider,
   WechatPayProvider,
 } from '@/core/payment';
@@ -17,7 +18,7 @@ import {
 } from '@/core/payment/types';
 import { envConfigs } from '@/config';
 import { credit, order, subscription } from '@/config/db/schema';
-import { getAllConfigs } from '@/modules/config/service';
+import { getAllConfigs, type ConfigMap } from '@/modules/config/service';
 import { calculateCreditExpirationTime } from '@/modules/credits/service';
 import {
   findByProviderSubscriptionId,
@@ -43,17 +44,41 @@ enum OrderStatus {
 let manager: PaymentManager | null = null;
 let managerConfigHash = '';
 
-async function getPaymentManager(): Promise<PaymentManager> {
-  const configs = await getAllConfigs();
+async function getPaymentManager(
+  suppliedConfigs?: ConfigMap
+): Promise<PaymentManager> {
+  const configs = suppliedConfigs || (await getAllConfigs({ fresh: true }));
   const c = (key: string) => configs[key] || '';
 
   // Rebuild manager if provider configs changed
   const hash = JSON.stringify([
+    c('stripe_enabled'),
     c('stripe_secret_key') || c('stripe_api_key'),
+    c('stripe_publishable_key'),
+    c('stripe_signing_secret') || c('stripe_webhook_secret'),
     c('creem_enabled'),
     c('creem_api_key'),
+    c('creem_signing_secret'),
+    c('creem_environment'),
+    c('creem_product_ids_mapping'),
+    c('paypal_enabled'),
+    c('paypal_client_id'),
+    c('paypal_client_secret'),
+    c('paypal_webhook_id'),
+    c('paypal_environment'),
+    c('alipay_enabled'),
     c('alipay_app_id'),
+    c('alipay_private_key'),
+    c('alipay_public_key'),
+    c('alipay_notify_url'),
+    c('wechat_enabled'),
+    c('wechat_app_id'),
     c('wechat_mch_id'),
+    c('wechat_api_v3_key'),
+    c('wechat_private_key'),
+    c('wechat_serial_no'),
+    c('wechat_notify_url'),
+    c('wechat_platform_cert'),
     c('default_payment_provider'),
   ]);
   if (manager && hash === managerConfigHash) return manager;
@@ -62,7 +87,7 @@ async function getPaymentManager(): Promise<PaymentManager> {
   managerConfigHash = hash;
 
   const stripeKey = c('stripe_secret_key') || c('stripe_api_key');
-  if (stripeKey) {
+  if (c('stripe_enabled') === 'true' && stripeKey) {
     const isDefault =
       !c('default_payment_provider') ||
       c('default_payment_provider') === 'stripe';
@@ -92,7 +117,29 @@ async function getPaymentManager(): Promise<PaymentManager> {
     );
   }
 
-  if (c('alipay_app_id') && c('alipay_private_key')) {
+  if (
+    c('paypal_enabled') === 'true' &&
+    c('paypal_client_id') &&
+    c('paypal_client_secret')
+  ) {
+    const isDefault = c('default_payment_provider') === 'paypal';
+    manager.addProvider(
+      new PayPalProvider({
+        clientId: c('paypal_client_id'),
+        clientSecret: c('paypal_client_secret'),
+        webhookId: c('paypal_webhook_id') || undefined,
+        environment:
+          c('paypal_environment') === 'sandbox' ? 'sandbox' : 'production',
+      }),
+      isDefault
+    );
+  }
+
+  if (
+    c('alipay_enabled') === 'true' &&
+    c('alipay_app_id') &&
+    c('alipay_private_key')
+  ) {
     const isDefault = c('default_payment_provider') === 'alipay';
     manager.addProvider(
       new AlipayProvider({
@@ -105,7 +152,11 @@ async function getPaymentManager(): Promise<PaymentManager> {
     );
   }
 
-  if (c('wechat_mch_id') && c('wechat_private_key')) {
+  if (
+    c('wechat_enabled') === 'true' &&
+    c('wechat_mch_id') &&
+    c('wechat_private_key')
+  ) {
     const isDefault = c('default_payment_provider') === 'wechat';
     manager.addProvider(
       new WechatPayProvider({
@@ -122,6 +173,20 @@ async function getPaymentManager(): Promise<PaymentManager> {
   }
 
   return manager;
+}
+
+export async function getAvailablePaymentProviders(
+  configs?: ConfigMap
+): Promise<{
+  providers: string[];
+  defaultProvider: string | null;
+}> {
+  const pm = await getPaymentManager(configs);
+  const providers = pm.getProviderNames();
+  return {
+    providers,
+    defaultProvider: pm.getDefaultProvider()?.name ?? null,
+  };
 }
 
 // --- Checkout ---
@@ -148,12 +213,18 @@ export async function createCheckout(params: {
   } = params;
   const pm = await getPaymentManager();
   const orderNo = getUniSeq('ORD');
+  const metadata = {
+    ...(paymentOrder.metadata || {}),
+    order_no: orderNo,
+    user_id: userId,
+    product_id: paymentOrder.productId || '',
+  };
 
   // Resolve provider-specific product ID (e.g. Creem product_ids_mapping)
   const resolvedProvider = provider || pm.getDefaultProvider()?.name;
   let resolvedProductId = paymentOrder.productId;
   if (resolvedProvider === 'creem' && paymentOrder.productId) {
-    const configs = await getAllConfigs();
+    const configs = await getAllConfigs({ fresh: true });
     const mapping = configs.creem_product_ids_mapping;
     if (mapping) {
       try {
@@ -177,6 +248,7 @@ export async function createCheckout(params: {
       ...paymentOrder,
       productId: resolvedProductId,
       orderNo,
+      metadata,
       successUrl: callbackSuccessUrl,
       cancelUrl:
         paymentOrder.cancelUrl ||
@@ -281,13 +353,25 @@ async function handleCheckoutSuccess(session: any, provider: string) {
     result.out_trade_no ||
     result.outTradeNo ||
     '';
-  if (!sessionId) return;
+  const metadata = session.metadata || {};
+  const orderNo: string =
+    metadata.order_no || metadata.orderNo || result.order_no || '';
+  if (!sessionId && !orderNo) return;
 
-  // Find order by session ID
+  // Prefer the provider session ID, with our signed/provider-returned order
+  // number as a fallback for gateways whose webhook uses a transaction ID.
   const [existingOrder] = await db()
     .select()
     .from(order)
-    .where(and(eq(order.paymentSessionId, sessionId), isNull(order.deletedAt)))
+    .where(
+      and(
+        or(
+          sessionId ? eq(order.paymentSessionId, sessionId) : undefined,
+          orderNo ? eq(order.orderNo, orderNo) : undefined
+        ),
+        isNull(order.deletedAt)
+      )
+    )
     .limit(1);
 
   if (!existingOrder) return;

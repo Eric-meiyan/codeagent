@@ -5,6 +5,7 @@ import { envConfigs } from '@/config';
 import { getPricingProduct } from '@/config/pricing';
 import { getAllConfigs } from '@/modules/config/service';
 import { createCheckout } from '@/modules/payment/service';
+import { getTopupProduct } from '@/modules/payment/topup-catalog';
 import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
 import { respData, respErr } from '@/lib/resp';
 
@@ -45,9 +46,12 @@ async function POST({ request }: { request: Request }) {
       return respErr('Missing product_id');
     }
 
-    // Look up product in the authoritative server-side catalog.
+    const configs = await getAllConfigs({ fresh: true });
+
+    // Look up product in the authoritative server-side catalogs.
     // We DO NOT trust price / credits / plan from the request body.
-    const product = getPricingProduct(product_id);
+    const product =
+      getTopupProduct(configs, product_id) || getPricingProduct(product_id);
     if (!product) {
       return respErr('Unknown product');
     }
@@ -55,7 +59,6 @@ async function POST({ request }: { request: Request }) {
     // Optional per-provider "test amount" override (admin-configured).
     // Only the charged amount is overridden — credits granted and order
     // amount stored both come from the authoritative catalog.
-    const configs = await getAllConfigs();
     const providerKey = payment_provider || configs.default_payment_provider;
     const testAmountRaw = providerKey
       ? configs[`${providerKey}_test_amount`]
@@ -65,12 +68,15 @@ async function POST({ request }: { request: Request }) {
 
     // Build success/cancel URLs — only accept same-origin redirects.
     const baseUrl = envConfigs.app_url || 'http://localhost:3000';
-    const safeRedirectPath = safeSameOriginPath(redirect, '/settings/billing');
-    const finalRedirect = redirect
-      ? `${baseUrl}/auth-callback?redirect=${encodeURIComponent(`${baseUrl}${safeRedirectPath}`)}`
-      : `${baseUrl}/settings/billing`;
-    const successUrl = `${baseUrl}/api/payment/callback?redirect=${encodeURIComponent(finalRedirect)}`;
-    const cancelUrl = `${baseUrl}/pricing`;
+    const defaultRedirect =
+      product.kind === 'topup' ? '/settings/credits' : '/settings/billing';
+    const safeRedirectPath = safeSameOriginPath(redirect, defaultRedirect);
+    const finalRedirect = `${baseUrl}${safeRedirectPath}`;
+    const successUrl = finalRedirect;
+    const cancelUrl =
+      product.kind === 'topup'
+        ? `${baseUrl}/settings/top-up?canceled=1`
+        : `${baseUrl}/pricing`;
 
     const checkout = await createCheckout({
       userId: session.user.id,
@@ -86,6 +92,7 @@ async function POST({ request }: { request: Request }) {
         description: product.description,
         successUrl,
         cancelUrl,
+        metadata: { purchase_kind: product.kind || 'plan' },
         customer: {
           email: session.user.email,
           name: session.user.name,

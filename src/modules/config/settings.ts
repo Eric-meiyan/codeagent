@@ -5,6 +5,8 @@
  * and they'll automatically appear in the admin panel.
  */
 
+import { DEFAULT_TOPUP_PRODUCTS_JSON } from '@/modules/payment/topup-catalog';
+
 export interface Setting {
   name: string;
   title: string;
@@ -96,6 +98,12 @@ export function getSettingGroups(): SettingGroup[] {
       name: 'basic_payment',
       title: 'Basic',
       description: 'Payment general settings',
+      tab: 'payment',
+    },
+    {
+      name: 'credit_topup',
+      title: 'Credit Top-up',
+      description: 'One-time credit packages available for purchase',
       tab: 'payment',
     },
     {
@@ -571,6 +579,24 @@ export function getSettings(): Setting[] {
       ],
       group: 'basic_payment',
       tab: 'payment',
+    },
+    {
+      name: 'credit_topup_enabled',
+      title: 'Enable credit top-up',
+      type: 'switch',
+      group: 'credit_topup',
+      tab: 'payment',
+      defaultValue: 'true',
+    },
+    {
+      name: 'credit_topup_products',
+      title: 'Top-up products',
+      type: 'textarea',
+      placeholder: DEFAULT_TOPUP_PRODUCTS_JSON,
+      tip: 'JSON array. Prices use the smallest currency unit (for example, 1000 means CNY 10.00). Product ids must begin with topup_.',
+      group: 'credit_topup',
+      tab: 'payment',
+      defaultValue: DEFAULT_TOPUP_PRODUCTS_JSON,
     },
 
     // ─── Payment / Stripe ────────────────────────────────────────────

@@ -17,6 +17,7 @@ export type PricingPlanInfo = {
 };
 
 export type PricingProduct = {
+  kind?: 'plan' | 'topup';
   productId: string;
   productName: string;
   planName: string;
@@ -35,6 +36,7 @@ export type PricingProduct = {
  */
 export const pricingCatalog: Record<string, PricingProduct> = {
   starter_monthly: {
+    kind: 'plan',
     productId: 'starter_monthly',
     productName: 'Starter',
     planName: 'Starter',
@@ -50,6 +52,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     },
   },
   pro_monthly: {
+    kind: 'plan',
     productId: 'pro_monthly',
     productName: 'Pro',
     planName: 'Pro',
@@ -61,6 +64,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     plan: { name: 'Pro', interval: PaymentInterval.MONTH, intervalCount: 1 },
   },
   enterprise_monthly: {
+    kind: 'plan',
     productId: 'enterprise_monthly',
     productName: 'Enterprise',
     planName: 'Enterprise',
@@ -76,6 +80,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     },
   },
   starter_yearly: {
+    kind: 'plan',
     productId: 'starter_yearly',
     productName: 'Starter',
     planName: 'Starter',
@@ -87,6 +92,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     plan: { name: 'Starter', interval: PaymentInterval.YEAR, intervalCount: 1 },
   },
   pro_yearly: {
+    kind: 'plan',
     productId: 'pro_yearly',
     productName: 'Pro',
     planName: 'Pro',
@@ -98,6 +104,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     plan: { name: 'Pro', interval: PaymentInterval.YEAR, intervalCount: 1 },
   },
   enterprise_yearly: {
+    kind: 'plan',
     productId: 'enterprise_yearly',
     productName: 'Enterprise',
     planName: 'Enterprise',
@@ -113,6 +120,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     },
   },
   starter_lifetime: {
+    kind: 'plan',
     productId: 'starter_lifetime',
     productName: 'Starter',
     planName: 'Starter Lifetime',
@@ -123,6 +131,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     credits: 100000,
   },
   pro_lifetime: {
+    kind: 'plan',
     productId: 'pro_lifetime',
     productName: 'Pro',
     planName: 'Pro Lifetime',
@@ -133,6 +142,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     credits: 1000000,
   },
   enterprise_lifetime: {
+    kind: 'plan',
     productId: 'enterprise_lifetime',
     productName: 'Enterprise',
     planName: 'Enterprise Lifetime',

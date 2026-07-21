@@ -158,7 +158,7 @@ function CreditsPage() {
           <div className="flex items-center justify-between">
             <CardTitle>{m['settings.credits.balance']()}</CardTitle>
             <Link
-              href="/pricing"
+              href="/settings/top-up"
               className={cn(
                 buttonVariants({ variant: 'outline', size: 'sm' }),
                 'gap-2'
