@@ -98,7 +98,10 @@ async function getPaymentManager(
         signingSecret:
           c('stripe_signing_secret') || c('stripe_webhook_secret') || undefined,
         allowPromotionCodes: true,
-        allowedPaymentMethods: ['card', 'wechat_pay', 'alipay'],
+        // Keep the baseline checkout compatible with newly activated Stripe
+        // accounts. Local payment methods can be added after Stripe enables
+        // them for the account.
+        allowedPaymentMethods: ['card'],
       }),
       isDefault
     );
