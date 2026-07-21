@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import {
@@ -8,6 +9,7 @@ import {
   Bot,
   CircleStop,
   Cloud,
+  Coins,
   FileDiff,
   Focus,
   History,
@@ -36,7 +38,7 @@ import {
   type TerminalConnectionEvent,
   type TerminalStatus,
 } from '@/modules/code/use-terminal-session';
-import { ApiError, apiPost } from '@/lib/api-client';
+import { ApiError, apiGet, apiPost } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -118,6 +120,12 @@ interface CodeLoaderData {
 
 function CodeWorkspacePage() {
   const loader = Route.useLoaderData() as CodeLoaderData;
+  const balanceQuery = useQuery({
+    queryKey: ['user-credits', 'balance'],
+    queryFn: () => apiGet<{ balance: number }>('/api/credits'),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
   const initialSession = loader.session ?? loader.sessions[0] ?? null;
   const initialAgent = initialSession?.agent ?? 'claude';
   const [sessions, setSessions] = useState<CodeSessionView[]>(loader.sessions);
@@ -674,6 +682,33 @@ function CodeWorkspacePage() {
           </Link>
           <div className="flex items-center gap-2">
             <Link
+              href="/settings/credits"
+              className={cn(
+                buttonVariants({ size: 'sm', variant: 'ghost' }),
+                'hidden min-w-24 gap-1.5 rounded-full sm:inline-flex'
+              )}
+              title={m['code.billing.balance']({
+                balance: balanceQuery.data?.balance ?? 0,
+              })}
+            >
+              <Coins className="size-4" />
+              <span className="tabular-nums">
+                {balanceQuery.isPending
+                  ? '…'
+                  : (balanceQuery.data?.balance ?? 0).toLocaleString()}
+              </span>
+            </Link>
+            <Link
+              href="/settings/top-up"
+              className={cn(
+                buttonVariants({ size: 'sm', variant: 'outline' }),
+                'gap-1.5 rounded-full'
+              )}
+            >
+              <Coins className="size-4" />
+              <span>{m['code.billing.topup']()}</span>
+            </Link>
+            <Link
               href="/settings"
               className={cn(buttonVariants({ size: 'sm' }), 'rounded-full')}
             >
@@ -792,7 +827,7 @@ function CodeWorkspacePage() {
               </p>
               {newSessionIssue.reason === 'insufficient_credits' && (
                 <Link
-                  href="/settings/credits"
+                  href="/settings/top-up"
                   className="text-primary mt-2 inline-flex font-medium hover:underline"
                 >
                   {m['code.billing.manage_credits']()}
@@ -1044,7 +1079,7 @@ function CodeWorkspacePage() {
                       {m['code.billing.suspended_description']()}
                     </p>
                     <Link
-                      href="/settings/credits"
+                      href="/settings/top-up"
                       className={cn(
                         buttonVariants({ size: 'sm' }),
                         'mt-4 inline-flex'

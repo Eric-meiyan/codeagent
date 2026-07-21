@@ -8,6 +8,7 @@ import {
   LifeBuoy,
   Receipt,
   User,
+  WalletCards,
 } from 'lucide-react';
 
 import { m } from '@/core/i18n/messages';
@@ -44,6 +45,12 @@ function SettingsLayout() {
       href: '/settings/credits',
       label: m['settings.nav.credits'](),
       icon: Coins,
+      group,
+    },
+    {
+      href: '/settings/top-up',
+      label: m['settings.nav.topup'](),
+      icon: WalletCards,
       group,
     },
     {
