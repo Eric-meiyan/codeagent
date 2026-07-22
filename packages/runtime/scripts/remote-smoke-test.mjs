@@ -93,7 +93,8 @@ function connectTerminal() {
 }
 
 const health = await requestJson(`/container-health/${userId}`);
-if (!health.tmux || !health.claude) throw new Error(JSON.stringify(health));
+if (!health.git || !health.tmux || !health.claude)
+  throw new Error(JSON.stringify(health));
 
 const appHtml = await requestText(`/app/${userId}/${sessionId}`);
 if (!appHtml.includes('CodeAgent Spike 7')) throw new Error(appHtml);

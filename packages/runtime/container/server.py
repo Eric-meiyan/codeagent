@@ -908,6 +908,7 @@ class Handler(BaseHTTPRequestHandler):
                     "runtime": "integrated-session-mvp",
                     "agent": safe_agent(self.headers.get("x-codeagent-agent")),
                     "model": safe_model(self.headers.get("x-codeagent-model")),
+                    "git": subprocess.check_output(["git", "--version"], text=True).strip(),
                     "tmux": subprocess.check_output(["tmux", "-V"], text=True).strip(),
                     "claude": subprocess.check_output([str(claude_bin), "--version"], text=True).strip(),
                     "claudeBinary": str(claude_bin),

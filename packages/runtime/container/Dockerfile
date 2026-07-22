@@ -17,12 +17,14 @@ RUN set -eux; \
 FROM node:20-slim
 
 RUN apt-get -o Acquire::Retries=5 update \
-  && apt-get install -y --no-install-recommends ca-certificates python3 ripgrep tmux \
+  && apt-get install -y --no-install-recommends ca-certificates git openssh-client python3 ripgrep tmux \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /workspace/sessions /tmp/claude-home /tmp/claude-config /tmp/codex-home /opt/claude-code/chunks \
   && useradd -m -u 10001 appuser \
   && chown -R appuser:appuser /workspace /tmp/claude-home /tmp/claude-config /tmp/codex-home \
   && python3 --version \
+  && git --version \
+  && ssh -V \
   && node --version \
   && npm --version \
   && tmux -V
