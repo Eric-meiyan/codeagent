@@ -27,6 +27,28 @@ interface Manifest {
   exists?: boolean;
   digest?: string | null;
   file_count?: number;
+  skipped_count?: number;
+}
+
+interface RuntimeErrorBody {
+  error?: unknown;
+  message?: unknown;
+  code?: unknown;
+  stage?: unknown;
+  details?: unknown;
+}
+
+class RuntimeOperationError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    public stage: string,
+    message: string,
+    public details: Record<string, unknown> = {}
+  ) {
+    super(message);
+    this.name = 'RuntimeOperationError';
+  }
 }
 
 export class IntegratedSessionContainer extends Container {
@@ -491,11 +513,74 @@ async function containerJson<T>(
 ): Promise<T> {
   const response = await fetcher.fetch(new Request(target, init));
   if (!response.ok) {
-    throw new Error(
-      `${target.pathname} failed: ${response.status} ${await response.text()}`
-    );
+    throw await containerRequestError(response, target.pathname);
   }
   return response.json<T>();
+}
+
+async function containerRequestError(
+  response: Response,
+  path: string
+): Promise<RuntimeOperationError> {
+  const text = await response.text();
+  let payload: RuntimeErrorBody = {};
+  try {
+    payload = JSON.parse(text) as RuntimeErrorBody;
+  } catch {
+    payload = {};
+  }
+  const message =
+    (typeof payload.error === 'string' && payload.error) ||
+    (typeof payload.message === 'string' && payload.message) ||
+    text ||
+    `Container request failed with status ${response.status}`;
+  const code =
+    typeof payload.code === 'string'
+      ? payload.code
+      : 'container_request_failed';
+  const stage =
+    typeof payload.stage === 'string' ? payload.stage : 'container.request';
+  const details =
+    payload.details && typeof payload.details === 'object'
+      ? (payload.details as Record<string, unknown>)
+      : {};
+  return new RuntimeOperationError(response.status, code, stage, message, {
+    ...details,
+    path,
+  });
+}
+
+function runtimeErrorResponse(error: unknown, action: string): Response {
+  const structured =
+    error instanceof RuntimeOperationError
+      ? error
+      : new RuntimeOperationError(
+          500,
+          'runtime_internal_error',
+          `runtime.${action}`,
+          error instanceof Error ? error.message : String(error)
+        );
+  console.error(
+    JSON.stringify({
+      event: 'runtime.operation.failed',
+      action,
+      status: structured.status,
+      code: structured.code,
+      stage: structured.stage,
+      message: structured.message,
+      details: structured.details,
+    })
+  );
+  return json(
+    {
+      ok: false,
+      error: structured.message,
+      code: structured.code,
+      stage: structured.stage,
+      details: structured.details,
+    },
+    { status: structured.status }
+  );
 }
 
 async function seed(
@@ -579,10 +664,7 @@ async function archive(
   target.pathname = `/archive/${encodeURIComponent(sessionId)}`;
   const response = await container(env, userId).fetch(new Request(target));
   if (!response.ok) {
-    return json(
-      { ok: false, error: await response.text() },
-      { status: response.status }
-    );
+    throw await containerRequestError(response, target.pathname);
   }
 
   const body = await response.arrayBuffer();
@@ -591,6 +673,8 @@ async function archive(
   const workspaceDigest = response.headers.get('x-workspace-digest') || '';
   const archiveSha256 = response.headers.get('x-archive-sha256') || '';
   const fileCount = response.headers.get('x-file-count') || '0';
+  const skippedFileCount = response.headers.get('x-skipped-file-count') || '0';
+  const archiveFormat = response.headers.get('x-archive-format') || '2';
   const currentFileCount = Number.parseInt(fileCount, 10) || 0;
   const previousFileCount = metadataFileCount(latest?.customMetadata);
 
@@ -598,7 +682,10 @@ async function archive(
     return json(
       {
         ok: false,
-        error: 'empty_workspace_archive_blocked',
+        error: 'Empty workspace archive was blocked',
+        code: 'empty_workspace_archive_blocked',
+        stage: 'archive.guard',
+        details: { key, previousFileCount, currentFileCount },
         key,
         previousFileCount,
         workspaceDigest,
@@ -617,6 +704,8 @@ async function archive(
     workspaceDigest,
     archiveSha256,
     fileCount,
+    skippedFileCount,
+    archiveFormat,
     archivedAt: now.toISOString(),
     versionKey,
   };
@@ -639,6 +728,8 @@ async function archive(
     workspaceDigest,
     archiveSha256,
     fileCount: currentFileCount,
+    skippedFileCount: Number.parseInt(skippedFileCount, 10) || 0,
+    archiveFormat,
   });
 }
 
@@ -652,17 +743,40 @@ async function restore(
   const object = await env.WORKSPACE_ARCHIVES.get(key);
   if (!object) {
     return json(
-      { ok: false, error: 'archive_not_found', key },
+      {
+        ok: false,
+        error: 'Workspace archive was not found',
+        code: 'archive_not_found',
+        stage: 'restore.load',
+        details: { key },
+        key,
+      },
       { status: 404 }
     );
   }
 
   const target = new URL(origin);
   target.pathname = `/restore/${encodeURIComponent(sessionId)}`;
+  const archiveFormat = object.customMetadata?.archiveFormat || '1';
+  const restoreHeaders = new Headers({
+    'content-type': 'application/gzip',
+    'content-length': String(object.size),
+    'x-archive-format': archiveFormat,
+  });
+  const expectedArchiveSha256 = object.customMetadata?.archiveSha256 || '';
+  if (expectedArchiveSha256) {
+    restoreHeaders.set('x-expected-archive-sha256', expectedArchiveSha256);
+  }
+  if (archiveFormat === '2' && object.customMetadata?.workspaceDigest) {
+    restoreHeaders.set(
+      'x-expected-workspace-digest',
+      object.customMetadata.workspaceDigest
+    );
+  }
   const result = await containerJson<Manifest>(container(env, userId), target, {
     method: 'PUT',
     body: await object.arrayBuffer(),
-    headers: { 'content-type': 'application/gzip' },
+    headers: restoreHeaders,
   });
 
   return json({
@@ -670,6 +784,8 @@ async function restore(
     key,
     objectSize: object.size,
     objectMetadata: object.customMetadata,
+    archiveFormat,
+    legacyArchive: archiveFormat !== '2',
     restored: result,
   });
 }
@@ -1215,17 +1331,11 @@ export default {
             await tmuxStatus(env, url.origin, userId, sessionId, agent, model)
           );
         if (action === 'archive')
-          return archive(env, url.origin, userId, sessionId);
+          return await archive(env, url.origin, userId, sessionId);
         if (action === 'restore')
-          return restore(env, url.origin, userId, sessionId);
+          return await restore(env, url.origin, userId, sessionId);
       } catch (error) {
-        return json(
-          {
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          { status: 500 }
-        );
+        return runtimeErrorResponse(error, action);
       }
     }
 

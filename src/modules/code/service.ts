@@ -63,6 +63,19 @@ export class CodeSessionStartError extends Error {
   }
 }
 
+export class RuntimeRequestError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    public stage: string,
+    message: string,
+    public details: Record<string, unknown> = {}
+  ) {
+    super(message);
+    this.name = 'RuntimeRequestError';
+  }
+}
+
 export interface RuntimeActionResult {
   ok?: boolean;
   [key: string]: unknown;
@@ -80,7 +93,7 @@ interface ArchiveStatus {
 }
 
 interface RestoreIntegrity {
-  state: 'verified' | 'mismatch' | 'unknown' | 'untracked';
+  state: 'verified' | 'reconciled' | 'mismatch' | 'unknown' | 'untracked';
   expectedDigest: string;
   restoredDigest: string;
 }
@@ -620,10 +633,26 @@ function pickRuntimeFields(payload: unknown): Record<string, unknown> {
     'bytes',
     'durationSeconds',
     'chargedCredits',
+    'code',
+    'stage',
+    'details',
+    'archiveFormat',
+    'legacyArchive',
+    'skippedFileCount',
   ]) {
     if (record[key] !== undefined) output[key] = record[key];
   }
   return output;
+}
+
+function runtimeErrorMetadata(error: unknown): Record<string, unknown> {
+  if (!(error instanceof RuntimeRequestError)) return {};
+  return {
+    status: error.status,
+    code: error.code,
+    stage: error.stage,
+    details: error.details,
+  };
 }
 
 function archiveMetadata(archive?: RuntimeActionResult | null) {
@@ -738,7 +767,23 @@ async function runtimeJson(
       typeof payload?.error === 'string'
         ? payload.error
         : res.statusText || 'Runtime request failed';
-    throw new Error(message);
+    const code =
+      typeof payload?.code === 'string'
+        ? payload.code
+        : 'runtime_request_failed';
+    const stage =
+      typeof payload?.stage === 'string' ? payload.stage : `runtime.${action}`;
+    const details =
+      payload?.details && typeof payload.details === 'object'
+        ? (payload.details as Record<string, unknown>)
+        : {};
+    throw new RuntimeRequestError(
+      res.status,
+      code,
+      stage,
+      `[${stage}] ${message}`,
+      details
+    );
   }
 
   return payload;
@@ -777,6 +822,7 @@ export async function health(userId: string, sessionId: string) {
       eventType: 'session.health.failed',
       severity: 'warn',
       message: (error as Error).message,
+      metadata: runtimeErrorMetadata(error),
     });
     throw error;
   }
@@ -836,6 +882,7 @@ export async function inspectSession(userId: string, sessionId: string) {
       eventType: 'session.inspect.failed',
       severity: 'warn',
       message: (error as Error).message,
+      metadata: runtimeErrorMetadata(error),
     });
     throw error;
   }
@@ -890,6 +937,7 @@ export async function archiveSession(userId: string, sessionId: string) {
       eventType: 'session.archive.failed',
       severity: 'warn',
       message: (error as Error).message,
+      metadata: runtimeErrorMetadata(error),
     });
     throw error;
   }
@@ -909,7 +957,38 @@ export async function restoreSession(userId: string, sessionId: string) {
       normalizeAgent(row.agent),
       row.model
     );
-    const restoreIntegrity = restoreIntegrityFromResult(row, restore);
+    let restoreIntegrity = restoreIntegrityFromResult(row, restore);
+    const legacyArchive = booleanField(restore, 'legacyArchive') === true;
+    if (
+      restoreIntegrity.state === 'mismatch' &&
+      legacyArchive &&
+      restoreIntegrity.restoredDigest
+    ) {
+      await db()
+        .update(codeSession)
+        .set({
+          archiveDigest: restoreIntegrity.restoredDigest,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(eq(codeSession.userId, userId), eq(codeSession.id, sessionId))
+        );
+      restoreIntegrity = { ...restoreIntegrity, state: 'reconciled' };
+      await recordCodeSessionEvent({
+        userId,
+        sessionId,
+        runtimeUserId: row.runtimeUserId,
+        agent: row.agent,
+        model: row.model,
+        eventType: 'session.restore.integrity_reconciled',
+        severity: 'warn',
+        message: 'Legacy archive digest reconciled after verified extraction',
+        metadata: {
+          restoreIntegrity,
+          restore: pickRuntimeFields(restore),
+        },
+      });
+    }
     if (restoreIntegrity.state === 'mismatch') {
       await recordCodeSessionEvent({
         userId,
@@ -970,6 +1049,7 @@ export async function restoreSession(userId: string, sessionId: string) {
       eventType: 'session.restore.failed',
       severity: 'warn',
       message: (error as Error).message,
+      metadata: runtimeErrorMetadata(error),
     });
     throw error;
   }

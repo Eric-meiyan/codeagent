@@ -4,8 +4,25 @@
 export const CODE_SESSION_AGENTS = ['claude', 'codex'] as const;
 export type CodeSessionAgent = (typeof CODE_SESSION_AGENTS)[number];
 
+interface WorkspaceRestoreDecision {
+  archiveKey?: string | null;
+  status?: string | null;
+  workspaceExists?: boolean;
+  restorePending?: boolean;
+}
+
 export function normalizeAgent(value: unknown): CodeSessionAgent {
   return value === 'codex' ? 'codex' : 'claude';
+}
+
+export function shouldRestoreWorkspace({
+  archiveKey,
+  status,
+  workspaceExists,
+  restorePending = false,
+}: WorkspaceRestoreDecision): boolean {
+  if (!archiveKey || status !== 'active') return false;
+  return restorePending || workspaceExists === false;
 }
 
 // Lossy by design: lowercases and strips everything outside [a-z0-9-], so

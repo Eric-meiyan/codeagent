@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && PYTHONPYCACHEPREFIX=/tmp/hicode-pycache python3 -m unittest discover -s container -p 'test_*.py'",
     "vendor:fetch": "node scripts/fetch-vendor.mjs",
     "deploy": "wrangler deploy --config wrangler.jsonc",
     "deploy:worker": "wrangler deploy --config wrangler.jsonc --containers-rollout=none",

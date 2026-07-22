@@ -33,6 +33,7 @@ import {
   CODE_SESSION_AGENTS,
   normalizeAgent,
   previewUrl,
+  shouldRestoreWorkspace,
   type CodeSessionAgent,
 } from '@/modules/code/runtime';
 import type { CodeSessionView } from '@/modules/code/service';
@@ -257,7 +258,7 @@ function CodeWorkspacePage() {
     (id: string, payload: CodeActionResponse) => {
       const integrity = objectField(payload, 'restoreIntegrity');
       const state = stringField(integrity, 'state');
-      if (state !== 'verified') return;
+      if (state !== 'verified' && state !== 'reconciled') return;
 
       setArchiveCheckpoint({
         sessionId: id,
@@ -395,11 +396,30 @@ function CodeWorkspacePage() {
     });
     setActionMsg(restoringMessage);
 
-    restoreSessionBeforeConnect(sessionId)
-      .then((payload) => {
+    runSessionAction(sessionId, 'inspect')
+      .then(async (inspection) => {
+        const workspaceExists = booleanField(inspection.workspace, 'exists');
+        if (
+          shouldRestoreWorkspace({
+            archiveKey: currentSession.archiveKey,
+            status: currentSession.status,
+            workspaceExists,
+          })
+        ) {
+          return {
+            action: 'restore' as const,
+            payload: await restoreSessionBeforeConnect(sessionId),
+          };
+        }
+        markSessionRestoreReady(sessionId);
+        return { action: 'inspect' as const, payload: inspection };
+      })
+      .then(({ action, payload }) => {
         if (cancelled) return;
         setRestoreGate({ sessionId, status: 'ready', message: '' });
-        setActionMsg(formatActionMessage('restore', payload));
+        setActionMsg(
+          action === 'restore' ? formatActionMessage(action, payload) : ''
+        );
       })
       .catch((err) => {
         if (cancelled) return;
@@ -582,18 +602,31 @@ function CodeWorkspacePage() {
       if (sessionId) {
         const payload = await runSessionAction(sessionId, 'suspend');
         rememberArchivedSession(payload.session);
+        setSessions((prev) =>
+          prev.filter((session) => session.id !== sessionId)
+        );
+        setSessionId(null);
       }
 
       const payload = await runSessionAction(archivedSessionId, 'resume');
       if (!payload.session) throw new Error('Restore failed');
-      const session = payload.session;
+      const resumedSession = payload.session;
+      markSessionRestorePending(resumedSession.id);
+      setRestoreGate({
+        sessionId: resumedSession.id,
+        status: 'restoring',
+        message: m['code.actions.restoring'](),
+      });
+      const restorePayload = await restoreSessionBeforeConnect(
+        resumedSession.id
+      );
+      const session = restorePayload.session || resumedSession;
       setArchivedSessions((prev) =>
         prev.filter((item) => item.id !== session.id)
       );
       setSessions([session]);
       setSessionId(session.id);
       setArchiveCheckpoint(checkpointFromSession(session));
-      markSessionRestorePending(session.id);
       setSelectedAgent(session.agent);
       setSelectedModel(session.model);
       setMobileSidebarOpen(false);
@@ -602,7 +635,8 @@ function CodeWorkspacePage() {
       setNewSessionMsg(
         `${m['code.actions.restoring']()}: ${shortId(session.id)}`
       );
-      setActionMsg(formatActionMessage('resume', payload));
+      setRestoreGate({ sessionId: session.id, status: 'ready', message: '' });
+      setActionMsg(formatActionMessage('restore', restorePayload));
     } catch (err) {
       const issue = sessionStartIssueFromError(err);
       const message = issue ? '' : (err as Error).message || 'error';
@@ -667,7 +701,14 @@ function CodeWorkspacePage() {
       }
       const issue = runtimeIssueFrom(payload);
       if (issue) {
-        if (currentSession?.archiveKey) {
+        const workspaceExists = booleanField(payload.workspace, 'exists');
+        if (
+          shouldRestoreWorkspace({
+            archiveKey: currentSession?.archiveKey,
+            status: currentSession?.status,
+            workspaceExists,
+          })
+        ) {
           const restorePayload = await restoreSessionBeforeConnect(sessionId);
           setRestoreGate({ sessionId, status: 'ready', message: '' });
           setActionMsg(formatActionMessage('restore', restorePayload));

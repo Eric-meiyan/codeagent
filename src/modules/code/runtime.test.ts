@@ -6,6 +6,7 @@ import {
   normalizeAgent,
   previewUrl,
   sanitizeUserId,
+  shouldRestoreWorkspace,
   terminalHttpUrl,
   terminalWsUrl,
 } from './runtime';
@@ -20,6 +21,42 @@ assert.equal(sanitizeUserId('已经abc'), 'abc');
 assert.equal(normalizeAgent('codex'), 'codex');
 assert.equal(normalizeAgent('claude'), 'claude');
 assert.equal(normalizeAgent('unknown'), 'claude');
+
+// Workspace restore decisions must never overwrite an active workspace merely
+// because an R2 checkpoint exists.
+assert.equal(
+  shouldRestoreWorkspace({
+    archiveKey: 'workspace.tar.gz',
+    status: 'active',
+    workspaceExists: true,
+  }),
+  false
+);
+assert.equal(
+  shouldRestoreWorkspace({
+    archiveKey: 'workspace.tar.gz',
+    status: 'active',
+    workspaceExists: false,
+  }),
+  true
+);
+assert.equal(
+  shouldRestoreWorkspace({
+    archiveKey: 'workspace.tar.gz',
+    status: 'active',
+    workspaceExists: true,
+    restorePending: true,
+  }),
+  true
+);
+assert.equal(
+  shouldRestoreWorkspace({
+    archiveKey: 'workspace.tar.gz',
+    status: 'suspended',
+    workspaceExists: false,
+  }),
+  false
+);
 
 // generateSessionId
 const a = generateSessionId();

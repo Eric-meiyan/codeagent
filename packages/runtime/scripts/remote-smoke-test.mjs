@@ -34,6 +34,26 @@ async function requestText(path) {
   return text;
 }
 
+async function requestError(path, options = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...options,
+    signal: AbortSignal.timeout(120000),
+  });
+  const text = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `expected JSON failure response: status=${response.status} body=${text.slice(0, 500)}`
+    );
+  }
+  if (response.ok || payload.ok !== false) {
+    throw new Error(`expected request failure: ${JSON.stringify(payload)}`);
+  }
+  return { status: response.status, payload };
+}
+
 function stripAnsi(text) {
   return text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
 }
@@ -103,10 +123,31 @@ if (!tmuxBefore.exists) throw new Error(JSON.stringify(tmuxBefore, null, 2));
 await connectTerminal();
 
 const archived = await requestJson(`/archive/${userId}/${sessionId}`);
+if (archived.archiveFormat !== '2') {
+  throw new Error(`unexpected archive format: ${JSON.stringify(archived)}`);
+}
+const blockedRestore = await requestError(`/restore/${userId}/${sessionId}`, {
+  method: 'POST',
+});
+if (
+  blockedRestore.status !== 409 ||
+  blockedRestore.payload.code !== 'active_workspace_restore_blocked' ||
+  blockedRestore.payload.stage !== 'restore.guard'
+) {
+  throw new Error(JSON.stringify(blockedRestore, null, 2));
+}
+const afterBlockedRestore = await requestJson(
+  `/inspect/${userId}/${sessionId}`
+);
+if (afterBlockedRestore.digest !== seeded.digest) {
+  throw new Error('blocked restore changed the active workspace');
+}
 const cleared = await requestJson(`/clear/${userId}/${sessionId}`, {
   method: 'POST',
 });
-if (cleared.exists !== false) throw new Error(JSON.stringify(cleared, null, 2));
+if (cleared.cleared?.exists !== false) {
+  throw new Error(JSON.stringify(cleared, null, 2));
+}
 const restored = await requestJson(`/restore/${userId}/${sessionId}`);
 const after = await requestJson(`/inspect/${userId}/${sessionId}`);
 if (seeded.digest !== after.digest) {

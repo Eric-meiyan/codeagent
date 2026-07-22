@@ -79,6 +79,15 @@ async function POST({
         ...error.details,
       });
     }
+    if (error instanceof codeSessions.RuntimeRequestError) {
+      return respJson(-1, error.message, {
+        reason: 'runtime_error',
+        status: error.status,
+        code: error.code,
+        stage: error.stage,
+        details: error.details,
+      });
+    }
     return respErr(error.message || 'Code session action failed');
   }
 }
